@@ -114,7 +114,7 @@
   // -------------------------------------------------------------------
   // ファイル選択時のリスト表示・カウンタ・上限チェック
   // -------------------------------------------------------------------
-  const MAX_FILES_PER_KIND = 20;
+  const MAX_FILES_PER_KIND = 10;
 
   function bindFileList(inputId, listId, counterId, kindLabel) {
     const input = $(inputId);

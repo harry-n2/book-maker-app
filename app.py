@@ -38,7 +38,7 @@ JOB_STATE: dict[str, dict] = {}
 ALLOWED_FILE_EXT = {".pdf", ".docx", ".md", ".markdown", ".txt", ".csv", ".json", ".yml", ".yaml"}
 ALLOWED_IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 MAX_FILE_BYTES = 20 * 1024 * 1024  # 20MB / file
-MAX_FILES_PER_KIND = 20            # ファイル・画像はそれぞれ最大20個まで
+MAX_FILES_PER_KIND = 10            # ファイル・画像はそれぞれ最大10個まで
 
 
 @app.get("/", response_class=HTMLResponse)
