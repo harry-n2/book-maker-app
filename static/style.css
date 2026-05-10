@@ -8,6 +8,7 @@
   --border: #e3e6ec;
   --error: #d83b3b;
   --success: #1e9b62;
+  --side-bg: #f1f3f8;
 }
 
 * { box-sizing: border-box; }
@@ -21,10 +22,34 @@ html, body {
   line-height: 1.7;
 }
 
+body {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "side header"
+    "side main"
+    "side footer";
+  min-height: 100vh;
+}
+
+header { grid-area: header; }
+main   { grid-area: main; }
+footer { grid-area: footer; }
+#project-sidebar { grid-area: side; }
+
+@media (max-width: 768px) {
+  body {
+    grid-template-columns: 1fr;
+    grid-template-areas: "header" "side" "main" "footer";
+  }
+}
+
 header, main, footer {
-  max-width: 720px;
+  max-width: 760px;
   margin: 0 auto;
   padding: 24px;
+  width: 100%;
 }
 
 header {
@@ -32,16 +57,47 @@ header {
   padding-top: 48px;
   padding-bottom: 16px;
 }
-header h1 {
-  margin: 0;
-  font-size: 32px;
-  letter-spacing: -0.5px;
+header h1 { margin: 0; font-size: 32px; letter-spacing: -0.5px; }
+header .lead { margin: 8px 0 0; color: var(--muted); font-size: 16px; }
+
+#project-sidebar {
+  background: var(--side-bg);
+  border-right: 1px solid var(--border);
+  padding: 24px 16px;
+  overflow-y: auto;
 }
-header .lead {
-  margin: 8px 0 0;
-  color: var(--muted);
-  font-size: 16px;
+#project-sidebar h3 { margin: 0 0 12px; font-size: 14px; color: var(--muted); letter-spacing: 0.5px; text-transform: uppercase; }
+#project-list { list-style: none; padding: 0; margin: 12px 0 16px; }
+#project-list li {
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  margin-bottom: 4px;
+  word-break: break-word;
+  background: white;
+  border: 1px solid var(--border);
+  transition: background-color 0.1s;
 }
+#project-list li:hover { background: #eaf0ff; }
+#project-list li.active {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+.side-btn {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 14px;
+}
+.side-btn:hover { background: var(--primary-dark); }
+.side-note { font-size: 11px; color: var(--muted); margin-top: 24px; }
 
 main section {
   background: var(--surface);
@@ -52,16 +108,15 @@ main section {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
-h2 {
-  margin-top: 0;
-  font-size: 22px;
-}
+h2 { margin-top: 0; font-size: 22px; }
 
 .field {
   display: block;
   margin-bottom: 24px;
   padding-bottom: 20px;
   border-bottom: 1px solid var(--border);
+  border: none;
+  padding: 0 0 20px;
 }
 .field:last-of-type { border-bottom: none; padding-bottom: 0; margin-bottom: 16px; }
 
@@ -78,10 +133,7 @@ h2 {
   margin-right: 8px;
   font-size: 14px;
 }
-.field .label-title {
-  font-weight: 600;
-  font-size: 17px;
-}
+.field .label-title { font-weight: 600; font-size: 17px; }
 .field .hint {
   display: block;
   color: var(--muted);
@@ -90,7 +142,7 @@ h2 {
 }
 .field .hint a { color: var(--primary); text-decoration: underline; }
 
-textarea, input, select {
+textarea, input[type="text"], input[type="password"], select {
   display: block;
   width: 100%;
   padding: 12px 14px;
@@ -105,6 +157,59 @@ textarea:focus, input:focus, select:focus {
   outline: none;
   border-color: var(--primary);
   background: white;
+}
+
+input[type="file"] {
+  display: block;
+  width: 100%;
+  padding: 8px 0;
+  font-size: 14px;
+}
+
+.reference-block {
+  background: #fafbfd;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+.reference-block legend {
+  background: white;
+  padding: 4px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.ref-row {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.ref-row:first-of-type { border-top: none; padding-top: 0; }
+.ref-label {
+  display: block;
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 8px;
+  color: #2a3340;
+}
+.ref-hint-small {
+  display: block;
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.upload-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+.upload-list li {
+  padding: 4px 8px;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 4px;
 }
 
 button, .dl-btn {
@@ -123,13 +228,8 @@ button, .dl-btn {
   text-decoration: none;
   transition: background-color 0.15s;
 }
-button:hover, .dl-btn:hover {
-  background: var(--primary-dark);
-}
-button[disabled] {
-  background: #aabbe5;
-  cursor: not-allowed;
-}
+button:hover, .dl-btn:hover { background: var(--primary-dark); }
+button[disabled] { background: #aabbe5; cursor: not-allowed; }
 
 .note {
   color: var(--muted);
@@ -138,11 +238,9 @@ button[disabled] {
   text-align: center;
 }
 
-.hidden { display: none; }
+.hidden { display: none !important; }
 
-.progress-wrap {
-  margin: 24px 0 16px;
-}
+.progress-wrap { margin: 24px 0 16px; }
 .progress-bar {
   width: 100%;
   height: 18px;
@@ -156,33 +254,13 @@ button[disabled] {
   background: linear-gradient(90deg, var(--primary), #4a7eff);
   transition: width 0.4s ease;
 }
-#progress-pct {
-  text-align: right;
-  margin: 6px 0 0;
-  font-size: 14px;
-  color: var(--muted);
-}
-#progress-message {
-  font-size: 15px;
-  text-align: center;
-  margin: 12px 0 0;
-}
+#progress-pct { text-align: right; margin: 6px 0 0; font-size: 14px; color: var(--muted); }
+#progress-message { font-size: 15px; text-align: center; margin: 12px 0 0; }
+#progress-references { font-size: 12px; }
 
-.result-title {
-  font-size: 20px;
-  font-weight: 600;
-  margin: 0 0 8px;
-}
-.result-stats {
-  color: var(--muted);
-  margin: 0 0 24px;
-}
-.downloads {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-bottom: 16px;
-}
+.result-title { font-size: 20px; font-weight: 600; margin: 0 0 8px; }
+.result-stats { color: var(--muted); margin: 0 0 24px; }
+.downloads { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
 .dl-btn { background: #555; }
 .dl-btn.primary { background: var(--primary); }
 
@@ -210,4 +288,5 @@ footer {
   header h1 { font-size: 26px; }
   main section { padding: 24px 18px; }
   h2 { font-size: 19px; }
+  #project-sidebar { padding: 16px; max-height: 200px; }
 }

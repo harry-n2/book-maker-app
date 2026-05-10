@@ -23,6 +23,11 @@ class BookConfig:
     author: str
     api_key: str
     model: str = "gemini-2.0-flash-exp"
+    references: list = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.references is None:
+            self.references = []
 
 
 def _load_prompt(name: str, **kwargs) -> str:
@@ -46,6 +51,16 @@ def _call_gemini(api_key: str, model: str, prompt: str, max_retries: int = 3) ->
     raise RuntimeError(f"Gemini call failed after {max_retries} attempts: {last_err}")
 
 
+def _references_block(cfg: BookConfig) -> str:
+    if not cfg.references:
+        return ""
+    try:
+        from references import render_references_block
+        return render_references_block(cfg.references)
+    except Exception:
+        return ""
+
+
 def generate_outline(cfg: BookConfig) -> dict:
     prompt = _load_prompt(
         "outline.txt",
@@ -53,6 +68,9 @@ def generate_outline(cfg: BookConfig) -> dict:
         target_layer=cfg.target_layer,
         author=cfg.author,
     )
+    refs = _references_block(cfg)
+    if refs:
+        prompt = refs + "\n\n" + prompt
     raw = _call_gemini(cfg.api_key, cfg.model, prompt)
     raw = re.sub(r"^```(?:json)?\s*", "", raw)
     raw = re.sub(r"\s*```$", "", raw)
@@ -76,6 +94,9 @@ def generate_chapter(cfg: BookConfig, chapter: dict, chapter_number: int, title:
         voice_type=chapter.get("voice_type", "正直宣言型"),
         failure_bank=chapter.get("failure_bank", ""),
     )
+    refs = _references_block(cfg)
+    if refs:
+        prompt = refs + "\n\n" + prompt
     body = _call_gemini(cfg.api_key, cfg.model, prompt)
     body = re.sub(r"^```(?:markdown|md)?\s*\n", "", body)
     body = re.sub(r"\n```\s*$", "", body)

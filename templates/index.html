@@ -3,18 +3,25 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Book Maker ── 4ステップで電子書籍を作成</title>
+<title>Book Maker ── 参照添付対応・電子書籍生成</title>
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <header>
   <h1>Book Maker</h1>
-  <p class="lead">テーマを書くだけで、Kindle 入稿可能な電子書籍を作成します。</p>
+  <p class="lead">テーマと参照ソースから、Kindle 入稿可能な電子書籍を作成します。</p>
 </header>
+
+<aside id="project-sidebar">
+  <h3>プロジェクト</h3>
+  <button id="new-project-btn" type="button" class="side-btn">＋ 新しい本を作る</button>
+  <ul id="project-list"></ul>
+  <p class="side-note">プロジェクトはこのブラウザ内に保存されます</p>
+</aside>
 
 <main>
   <section id="form-section">
-    <h2>4つだけ教えてください</h2>
+    <h2>5つのステップで本を作る</h2>
     <form id="book-form">
       <label class="field">
         <span class="num">1</span>
@@ -44,8 +51,45 @@
         <input type="text" id="author" name="author" required placeholder="例：ハリー">
       </label>
 
+      <fieldset class="field reference-block">
+        <legend>
+          <span class="num">4</span>
+          <span class="label-title">参考にする素材（任意・複数可）</span>
+        </legend>
+        <span class="hint">添付した素材は本の事実・事例・固有名詞として使われます。</span>
+
+        <div class="ref-row">
+          <span class="ref-label">URL（1行に1つ）</span>
+          <textarea id="ref_urls" name="ref_urls" rows="2"
+            placeholder="https://example.com/article&#10;https://note.com/yourpost"></textarea>
+        </div>
+
+        <div class="ref-row">
+          <span class="ref-label">NotebookLM の共有 URL</span>
+          <textarea id="notebooklm_urls" name="notebooklm_urls" rows="1"
+            placeholder="https://notebooklm.google.com/notebook/xxxxx (任意)"></textarea>
+          <span class="ref-hint-small">
+            ※ NotebookLM 公式 API は未公開のため、共有ノートからの自動取得は限定的です。
+            ノート内の『エクスポート → Markdown』を使い、下のファイル欄に添付するのが確実です。
+          </span>
+        </div>
+
+        <div class="ref-row">
+          <span class="ref-label">ファイル（PDF / Word / Markdown / Text / CSV）</span>
+          <input type="file" id="files" name="files" multiple
+            accept=".pdf,.docx,.md,.markdown,.txt,.csv,.json,.yml,.yaml">
+          <ul id="file-list" class="upload-list"></ul>
+        </div>
+
+        <div class="ref-row">
+          <span class="ref-label">画像（JPG / PNG / WebP）── AI が内容を読み取ります</span>
+          <input type="file" id="images" name="images" multiple accept="image/*">
+          <ul id="image-list" class="upload-list"></ul>
+        </div>
+      </fieldset>
+
       <label class="field">
-        <span class="num">4</span>
+        <span class="num">5</span>
         <span class="label-title">Gemini API キー</span>
         <span class="hint">
           <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">Google AI Studio</a>
@@ -56,7 +100,7 @@
 
       <button type="submit" id="submit-btn">本を作成する</button>
     </form>
-    <p class="note">所要時間：5〜10分（自動生成中はこのページを閉じないでください）</p>
+    <p class="note">所要時間：5〜10分（参照素材が多いほど長くなります）</p>
   </section>
 
   <section id="progress-section" class="hidden">
@@ -66,6 +110,7 @@
       <p id="progress-pct">0%</p>
     </div>
     <p id="progress-message">準備中…</p>
+    <p id="progress-references" class="note"></p>
   </section>
 
   <section id="result-section" class="hidden">
@@ -75,8 +120,9 @@
     <div class="downloads">
       <a id="download-md" class="dl-btn">Markdown をダウンロード</a>
       <a id="download-docx" class="dl-btn primary">Word ファイルをダウンロード</a>
+      <a id="download-notebooklm" class="dl-btn">NotebookLM 取込用 Markdown</a>
     </div>
-    <p class="note">Word ファイルは Kindle KDP に直接アップロードできます。</p>
+    <p class="note">Word ファイルは Kindle KDP に直接アップロードできます。NotebookLM 取込用は Google NotebookLM の『+ ソースを追加』に貼り付けてご活用ください。</p>
     <button id="reset-btn">もう1冊作る</button>
   </section>
 
@@ -88,7 +134,7 @@
 </main>
 
 <footer>
-  <p>Book Maker v1 ── voice.md v7.1 規範準拠 ／ Kindle KDP 入稿対応</p>
+  <p>Book Maker v2 ── voice.md v7.1 規範準拠 ／ Kindle KDP 入稿対応 ／ 参照（URL・ファイル・画像・NotebookLM）連携</p>
 </footer>
 
 <script src="/static/app.js"></script>
