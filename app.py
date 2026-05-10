@@ -1,11 +1,10 @@
-"""Book Maker App ── AIリテラシー低い方向けの書籍生成 Web アプリ。"""
+"""Book Maker App ── 2段階UX（タイトル10選 → 構造 → 本編）。"""
 
 from __future__ import annotations
 
 import json
 import os
 import shutil
-import tempfile
 import threading
 import traceback
 import uuid
@@ -16,7 +15,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from generator import BookConfig, generate_book
+from generator import BookConfig, continue_book_job, start_titles_job
 from references import (
     Reference,
     analyze_image,
@@ -30,15 +29,15 @@ JOBS = BASE / "jobs"
 TEMPLATES = BASE / "templates"
 STATIC = BASE / "static"
 
-app = FastAPI(title="Book Maker", description="シンプルな書籍生成アプリ")
+app = FastAPI(title="Book Maker", description="2段階UX 書籍生成アプリ")
 app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
 
 JOB_STATE: dict[str, dict] = {}
 
 ALLOWED_FILE_EXT = {".pdf", ".docx", ".md", ".markdown", ".txt", ".csv", ".json", ".yml", ".yaml"}
 ALLOWED_IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
-MAX_FILE_BYTES = 20 * 1024 * 1024  # 20MB / file
-MAX_FILES_PER_KIND = 10            # ファイル・画像はそれぞれ最大10個まで
+MAX_FILE_BYTES = 20 * 1024 * 1024
+MAX_FILES_PER_KIND = 10
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -97,11 +96,7 @@ def _collect_references(
             continue
         ext = Path(f.filename).suffix.lower()
         if ext not in ALLOWED_FILE_EXT:
-            refs.append({
-                "label": f"file: {f.filename}",
-                "kind": "file",
-                "content": f"[未対応の拡張子：{ext}]",
-            })
+            refs.append({"label": f"file: {f.filename}", "kind": "file", "content": f"[未対応の拡張子：{ext}]"})
             continue
         saved = _save_upload(f, refs_dir)
         refs.append(extract_file(saved, original_name=f.filename))
@@ -111,11 +106,7 @@ def _collect_references(
             continue
         ext = Path(img.filename).suffix.lower()
         if ext not in ALLOWED_IMAGE_EXT:
-            refs.append({
-                "label": f"image: {img.filename}",
-                "kind": "image",
-                "content": f"[未対応の画像拡張子：{ext}]",
-            })
+            refs.append({"label": f"image: {img.filename}", "kind": "image", "content": f"[未対応の画像拡張子：{ext}]"})
             continue
         saved = _save_upload(img, refs_dir)
         refs.append(analyze_image(saved, original_name=img.filename, api_key=api_key))
@@ -123,8 +114,13 @@ def _collect_references(
     return refs
 
 
-@app.post("/generate")
-async def generate(
+# ---------------------------------------------------------------------------
+# Step 1: タイトル10選を生成（同期処理・約30〜45秒で返す）
+# ---------------------------------------------------------------------------
+
+
+@app.post("/generate-titles")
+async def generate_titles_endpoint(
     theme: str = Form(...),
     target_layer: str = Form(...),
     author: str = Form(...),
@@ -146,14 +142,6 @@ async def generate(
     url_list = [line.strip() for line in (ref_urls or "").splitlines() if line.strip()]
     nb_list = [line.strip() for line in (notebooklm_urls or "").splitlines() if line.strip()]
 
-    JOB_STATE[job_id] = {
-        "status": "running",
-        "progress": 0,
-        "message": "参照ソースを取り込んでいます...",
-        "project_id": project_id.strip() or job_id,
-        "project_name": project_name.strip() or theme[:30],
-    }
-
     references = _collect_references(
         job_dir=job_dir,
         api_key=api_key.strip(),
@@ -162,7 +150,6 @@ async def generate(
         images=images or [],
         notebooklm_urls=nb_list,
     )
-
     (job_dir / "references_index.json").write_text(
         json.dumps(
             [{"label": r["label"], "kind": r["kind"], "char_count": len(r["content"])} for r in references],
@@ -180,14 +167,67 @@ async def generate(
         references=references,
     )
 
+    try:
+        candidates = start_titles_job(cfg, job_dir)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"タイトル生成に失敗しました：{exc}")
+
+    JOB_STATE[job_id] = {
+        "status": "title_picked",
+        "progress": 0,
+        "message": "タイトルを選んでください。",
+        "project_id": project_id.strip() or job_id,
+        "project_name": project_name.strip() or theme[:30],
+        "candidates": candidates,
+        "cfg": {
+            "theme": cfg.theme,
+            "target_layer": cfg.target_layer,
+            "author": cfg.author,
+            "api_key": cfg.api_key,
+            "references": cfg.references,
+        },
+        "reference_count": len(references),
+    }
+    return {
+        "job_id": job_id,
+        "candidates": candidates,
+        "reference_count": len(references),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Step 2: タイトル確定 → 本編生成（バックグラウンド）
+# ---------------------------------------------------------------------------
+
+
+@app.post("/confirm-title/{job_id}")
+async def confirm_title_endpoint(job_id: str, adopted_index: int = Form(...)):
+    state = JOB_STATE.get(job_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません。最初からやり直してください。")
+    candidates = state.get("candidates") or []
+    if not 0 <= adopted_index < len(candidates):
+        raise HTTPException(status_code=400, detail="採用 index が範囲外です。")
+
+    cfg_data = state.get("cfg") or {}
+    cfg = BookConfig(
+        theme=cfg_data.get("theme", ""),
+        target_layer=cfg_data.get("target_layer", ""),
+        author=cfg_data.get("author", ""),
+        api_key=cfg_data.get("api_key", ""),
+        references=cfg_data.get("references", []),
+    )
+    job_dir = JOBS / job_id
+    state.update({"status": "running", "progress": 5, "message": "構造の生成を開始します..."})
+
     def runner() -> None:
         try:
             def progress(msg: str, pct: int) -> None:
                 JOB_STATE[job_id]["progress"] = pct
                 JOB_STATE[job_id]["message"] = msg
 
-            result = generate_book(cfg, job_dir, progress)
-            result["reference_count"] = len(references)
+            result = continue_book_job(cfg, job_dir, candidates, adopted_index, progress)
+            result["reference_count"] = state.get("reference_count", 0)
             JOB_STATE[job_id].update({
                 "status": "done",
                 "progress": 100,
@@ -202,11 +242,7 @@ async def generate(
             })
 
     threading.Thread(target=runner, daemon=True).start()
-    return {
-        "job_id": job_id,
-        "project_id": JOB_STATE[job_id]["project_id"],
-        "reference_count": len(references),
-    }
+    return {"job_id": job_id, "adopted_index": adopted_index}
 
 
 @app.get("/status/{job_id}")
@@ -221,6 +257,8 @@ async def status(job_id: str) -> JSONResponse:
         "project_id": state.get("project_id"),
         "project_name": state.get("project_name"),
     }
+    if state["status"] == "title_picked":
+        payload["candidates"] = state.get("candidates", [])
     if state["status"] == "done":
         payload["result"] = state["result"]
     if state["status"] == "error":
@@ -230,7 +268,15 @@ async def status(job_id: str) -> JSONResponse:
 
 @app.get("/download/{job_id}/{filename}")
 async def download(job_id: str, filename: str):
-    if filename not in {"book_full.md", "book_full.docx", "outline.json", "references_index.json"}:
+    allowed = {
+        "book_full.md",
+        "book_full.docx",
+        "title_candidates.md",
+        "book_description.md",
+        "structure.json",
+        "references_index.json",
+    }
+    if filename not in allowed:
         raise HTTPException(status_code=400, detail="不正なファイル名です。")
     fpath = JOBS / job_id / filename
     if not fpath.exists():
@@ -239,9 +285,7 @@ async def download(job_id: str, filename: str):
     if filename.endswith(".md"):
         media_type = "text/markdown; charset=utf-8"
     elif filename.endswith(".docx"):
-        media_type = (
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
+        media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     elif filename.endswith(".json"):
         media_type = "application/json; charset=utf-8"
     return FileResponse(str(fpath), media_type=media_type, filename=filename)
@@ -249,11 +293,6 @@ async def download(job_id: str, filename: str):
 
 @app.get("/notebooklm-export/{job_id}")
 async def notebooklm_export(job_id: str):
-    """NotebookLM 取り込み用の集約 Markdown を生成する。
-
-    NotebookLM 公式 API は未公開のため、ユーザーがブラウザで NotebookLM の
-    『+ ソースを追加』に貼り付けるための Markdown を返す。
-    """
     job_dir = JOBS / job_id
     md_path = job_dir / "book_full.md"
     if not md_path.exists():
@@ -269,7 +308,7 @@ async def notebooklm_export(job_id: str):
         except Exception:
             pass
     body = md_path.read_text(encoding="utf-8")
-    out = (job_dir / "book_for_notebooklm.md")
+    out = job_dir / "book_for_notebooklm.md"
     out.write_text(
         f"<!-- NotebookLM 取り込み用エクスポート -->\n\n{body}\n{refs_text}",
         encoding="utf-8",

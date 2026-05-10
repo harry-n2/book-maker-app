@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Book Maker ── 参照添付対応・電子書籍生成</title>
+<title>Book Maker ── タイトル10選から選んで作る電子書籍</title>
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <header>
   <h1>Book Maker</h1>
-  <p class="lead">テーマと参照ソースから、Kindle 入稿可能な電子書籍を作成します。</p>
+  <p class="lead">テーマと参照素材から、Kindle 入稿可能な電子書籍を作成します。</p>
 </header>
 
 <aside id="project-sidebar">
@@ -21,7 +21,7 @@
 
 <main>
   <section id="form-section">
-    <h2>5つのステップで本を作る</h2>
+    <h2>5つの項目で本を作る</h2>
     <form id="book-form">
       <label class="field">
         <span class="num">1</span>
@@ -69,15 +69,13 @@
           <textarea id="notebooklm_urls" name="notebooklm_urls" rows="1"
             placeholder="https://notebooklm.google.com/notebook/xxxxx (任意)"></textarea>
           <span class="ref-hint-small">
-            ※ NotebookLM 公式 API は未公開のため、共有ノートからの自動取得は限定的です。
-            ノート内の『エクスポート → Markdown』を使い、下のファイル欄に添付するのが確実です。
+            ※ NotebookLM の自動取得は限定的です。ノート内の『エクスポート → Markdown』を下のファイル欄に添付するのが確実です。
           </span>
         </div>
 
         <div class="ref-row">
           <span class="ref-label">ファイル（PDF / Word / Markdown / Text / CSV）── 最大10個まで</span>
-          <input type="file" id="files" name="files" multiple
-            data-max="10"
+          <input type="file" id="files" name="files" multiple data-max="10"
             accept=".pdf,.docx,.md,.markdown,.txt,.csv,.json,.yml,.yaml">
           <p class="ref-counter" id="file-counter">0 / 10 ファイル選択中</p>
           <ul id="file-list" class="upload-list"></ul>
@@ -96,14 +94,25 @@
         <span class="label-title">Gemini API キー</span>
         <span class="hint">
           <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">Google AI Studio</a>
-          で無料で取得できます。コピーして貼り付けてください。
+          で無料で取得できます。
         </span>
         <input type="password" id="api_key" name="api_key" required placeholder="AIzaSy...">
       </label>
 
-      <button type="submit" id="submit-btn">本を作成する</button>
+      <button type="submit" id="submit-btn">タイトル候補10選を作る</button>
     </form>
-    <p class="note">所要時間：5〜10分（参照素材が多いほど長くなります）</p>
+    <p class="note">最初に「タイトル候補10選」をAIが作ります（30〜60秒）。その中から1つを選ぶと本編生成が始まります。</p>
+  </section>
+
+  <section id="title-pick-section" class="hidden">
+    <h2>タイトル候補10選から1つお選びください</h2>
+    <p class="note" id="title-pick-summary">候補を読み込み中…</p>
+    <ul id="title-cards"></ul>
+    <div class="title-pick-actions">
+      <button type="button" id="back-btn" class="secondary-btn">← フォームに戻る</button>
+      <button type="button" id="confirm-title-btn" disabled>このタイトルで本を作る →</button>
+    </div>
+    <p class="note">気に入る候補がない場合は「フォームに戻る」を押してテーマを書き直してから再生成してください。</p>
   </section>
 
   <section id="progress-section" class="hidden">
@@ -121,11 +130,13 @@
     <p id="result-title" class="result-title"></p>
     <p id="result-stats" class="result-stats"></p>
     <div class="downloads">
-      <a id="download-md" class="dl-btn">Markdown をダウンロード</a>
-      <a id="download-docx" class="dl-btn primary">Word ファイルをダウンロード</a>
-      <a id="download-notebooklm" class="dl-btn">NotebookLM 取込用 Markdown</a>
+      <a id="download-md" class="dl-btn">Markdown</a>
+      <a id="download-docx" class="dl-btn primary">Word（KDP入稿）</a>
+      <a id="download-titles" class="dl-btn">タイトル10選</a>
+      <a id="download-description" class="dl-btn">Kindle 紹介文（720字）</a>
+      <a id="download-notebooklm" class="dl-btn">NotebookLM 取込用</a>
     </div>
-    <p class="note">Word ファイルは Kindle KDP に直接アップロードできます。NotebookLM 取込用は Google NotebookLM の『+ ソースを追加』に貼り付けてご活用ください。</p>
+    <p class="note">Word は KDP に直接アップロード可能。Kindle紹介文は KDP「本の説明」欄に貼り付けてご活用ください。</p>
     <button id="reset-btn">もう1冊作る</button>
   </section>
 
@@ -137,7 +148,7 @@
 </main>
 
 <footer>
-  <p>Book Maker v2 ── voice.md v7.1 規範準拠 ／ Kindle KDP 入稿対応 ／ 参照（URL・ファイル・画像・NotebookLM）連携</p>
+  <p>Book Maker v3 ── 2段階UX（タイトル10選→本編）／ 章立て H1=4〜5・H2=2〜3 ／ Kindle KDP 入稿対応</p>
 </footer>
 
 <script src="/static/app.js"></script>
