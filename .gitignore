@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Job outputs (生成された書籍は git 管理しない)
+jobs/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# OS
+desktop.ini
+
+# Vercel
+.vercel/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log

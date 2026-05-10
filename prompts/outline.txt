@@ -1,0 +1,33 @@
+以下のテーマで、Kindle電子書籍の目次を作成してください。
+
+【テーマ】
+{theme}
+
+【ターゲット読者】
+{target_layer}
+
+【著者名】
+{author}
+
+【出力フォーマット（JSONのみ。コードブロック不要）】
+{{
+  "title": "主タイトル（25文字以内）",
+  "subtitle": "サブタイトル（30文字以内）",
+  "chapters": [
+    {{"id": "00_introduction", "title": "はじめに：◯◯", "voice_type": "正直宣言型", "failure_bank": "（失敗談1行）", "key_message": "（章の核となる主張・1行）"}},
+    {{"id": "01_chapter_01", "title": "第1章：◯◯", "voice_type": "数字インパクト型", "failure_bank": "（失敗談1行）", "key_message": "（章の核となる主張・1行）"}},
+    {{"id": "02_chapter_02", "title": "第2章：◯◯", "voice_type": "業界権威型", "failure_bank": "（失敗談1行）", "key_message": "（章の核となる主張・1行）"}},
+    {{"id": "03_chapter_03", "title": "第3章：◯◯", "voice_type": "テンプレ提示型", "failure_bank": "（失敗談1行）", "key_message": "（章の核となる主張・1行）"}},
+    {{"id": "04_chapter_04", "title": "第4章：◯◯", "voice_type": "公開躊躇型", "failure_bank": "（失敗談1行）", "key_message": "（章の核となる主張・1行）"}},
+    {{"id": "05_chapter_05", "title": "第5章：◯◯", "voice_type": "FIRE型", "failure_bank": "（失敗談1行）", "key_message": "（章の核となる主張・1行）"}},
+    {{"id": "06_chapter_06", "title": "第6章：◯◯", "voice_type": "時間単価型", "failure_bank": "（失敗談1行）", "key_message": "（章の核となる主張・1行）"}},
+    {{"id": "07_chapter_07", "title": "第7章：◯◯", "voice_type": "45歳の壁型", "failure_bank": "（失敗談1行）", "key_message": "（章の核となる主張・1行）"}},
+    {{"id": "99_conclusion", "title": "おわりに：◯◯", "voice_type": "具体エピソード型", "failure_bank": "（巻末プロフ用）", "key_message": "（最終メッセージ・1行）"}}
+  ]
+}}
+
+【ルール】
+- タイトルは検索SEO重視（数字・固有名詞・ターゲット直撃ワード）
+- 各章 voice_type は10種からバランスよく散らす
+- failure_bank は著者の実体験をベースにテーマと整合させる
+- 章タイトルは具体的に（「〇〇の方法」より「〇〇を3ステップで」）
