@@ -112,21 +112,33 @@
   }
 
   // -------------------------------------------------------------------
-  // ファイル選択時のリスト表示
+  // ファイル選択時のリスト表示・カウンタ・上限チェック
   // -------------------------------------------------------------------
-  function bindFileList(inputId, listId) {
-    $(inputId).addEventListener("change", (e) => {
+  const MAX_FILES_PER_KIND = 20;
+
+  function bindFileList(inputId, listId, counterId, kindLabel) {
+    const input = $(inputId);
+    const counter = $(counterId);
+    input.addEventListener("change", (e) => {
+      const files = Array.from(e.target.files);
       const ul = $(listId);
       ul.innerHTML = "";
-      Array.from(e.target.files).forEach((f) => {
+      files.forEach((f) => {
         const li = document.createElement("li");
         li.textContent = `📎 ${f.name} (${(f.size / 1024).toFixed(1)} KB)`;
         ul.appendChild(li);
       });
+      counter.textContent = `${files.length} / ${MAX_FILES_PER_KIND} ${kindLabel}選択中`;
+      if (files.length > MAX_FILES_PER_KIND) {
+        counter.classList.add("over-limit");
+        counter.textContent += `  ⚠ 上限を超えています（${kindLabel}は最大${MAX_FILES_PER_KIND}個まで）`;
+      } else {
+        counter.classList.remove("over-limit");
+      }
     });
   }
-  bindFileList("files", "file-list");
-  bindFileList("images", "image-list");
+  bindFileList("files", "file-list", "file-counter", "ファイル");
+  bindFileList("images", "image-list", "image-counter", "画像");
 
   // -------------------------------------------------------------------
   // 通信
@@ -187,6 +199,16 @@
     };
     if (!payload.theme || !payload.author || !payload.api_key) {
       alert("未入力の項目があります（テーマ・著者名・API キー）");
+      return;
+    }
+    const fileCount = $("files").files.length;
+    const imageCount = $("images").files.length;
+    if (fileCount > MAX_FILES_PER_KIND) {
+      alert(`添付ファイルは最大 ${MAX_FILES_PER_KIND} 個までです（現在 ${fileCount} 個）。`);
+      return;
+    }
+    if (imageCount > MAX_FILES_PER_KIND) {
+      alert(`添付画像は最大 ${MAX_FILES_PER_KIND} 個までです（現在 ${imageCount} 個）。`);
       return;
     }
     sessionStorage.setItem(API_KEY_STORE, payload.api_key);
