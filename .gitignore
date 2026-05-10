@@ -42,3 +42,10 @@ desktop.ini
 # テスト出力
 test_output/
 templates/reference_default.docx
+
+# PyInstaller 中間出力
+build/
+dist/
+*.spec.bak
+BookMaker_jobs/
+

@@ -16,7 +16,16 @@
 
 ## 起動方法
 
-### Windows
+### 🎁 一番カンタン：BookMaker.exe（Windows 用デスクトップアプリ）
+
+1. `dist/BookMaker.exe` をダブルクリックするだけ
+2. 自動でブラウザが開きます（http://127.0.0.1:8765）
+3. ジョブの保存先：`BookMaker.exe と同じフォルダ/BookMaker_jobs/`
+4. 終了するにはコンソールウィンドウを閉じます
+
+> exe が無い場合は、自分でビルド可能：`build.bat` をダブルクリック → `dist/BookMaker.exe` 完成（約3〜5分）
+
+### Windows（Python 直接実行）
 
 1. このフォルダを丸ごと配置（例：`C:\Users\naoya\myproject\book_maker_app\`）
 2. `start.bat` をダブルクリック

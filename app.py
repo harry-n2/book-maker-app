@@ -23,11 +23,12 @@ from references import (
     fetch_notebooklm,
     fetch_url,
 )
+import _resource
 
-BASE = Path(__file__).resolve().parent
-JOBS = BASE / "jobs"
-TEMPLATES = BASE / "templates"
-STATIC = BASE / "static"
+BASE = _resource.resource_root()
+JOBS = _resource.jobs_dir()
+TEMPLATES = _resource.resource("templates")
+STATIC = _resource.resource("static")
 
 app = FastAPI(title="Book Maker", description="2段階UX 書籍生成アプリ")
 app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")

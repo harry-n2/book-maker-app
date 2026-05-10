@@ -11,9 +11,11 @@ from typing import Any, Callable
 
 import google.generativeai as genai
 
-BASE = Path(__file__).resolve().parent
-PROMPTS = BASE / "prompts"
-JOBS = BASE / "jobs"
+import _resource
+
+BASE = _resource.resource_root()
+PROMPTS = _resource.resource("prompts")
+JOBS = _resource.jobs_dir()
 
 
 @dataclass
@@ -573,7 +575,7 @@ def convert_to_docx(md_path: Path, docx_path: Path) -> None:
     import pypandoc
 
     extra_args = ["--standalone", "--toc", "--toc-depth=3"]
-    ref_doc = BASE / "templates" / "reference_v7.docx"
+    ref_doc = _resource.resource("templates", "reference_v7.docx")
     if ref_doc.exists():
         extra_args.append(f"--reference-doc={ref_doc}")
 
