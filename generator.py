@@ -572,10 +572,15 @@ def build_merged_md(
 def convert_to_docx(md_path: Path, docx_path: Path) -> None:
     import pypandoc
 
+    extra_args = ["--standalone", "--toc", "--toc-depth=3"]
+    ref_doc = BASE / "templates" / "reference_v7.docx"
+    if ref_doc.exists():
+        extra_args.append(f"--reference-doc={ref_doc}")
+
     pypandoc.convert_file(
         str(md_path),
         to="docx",
         outputfile=str(docx_path),
         format="markdown+raw_attribute",
-        extra_args=["--standalone", "--toc", "--toc-depth=3"],
+        extra_args=extra_args,
     )

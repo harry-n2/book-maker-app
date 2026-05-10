@@ -38,3 +38,7 @@ desktop.ini
 *.log
 
 .vercel
+
+# テスト出力
+test_output/
+templates/reference_default.docx
