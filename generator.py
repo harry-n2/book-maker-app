@@ -618,6 +618,11 @@ def clean_public_manuscript(text: str) -> str:
     text = re.sub(r"```{=openxml}.*?```", "", text, flags=re.DOTALL)
     text = text.replace('<w:p><w:r><w:br w:type="page"/></w:r></w:p>', "")
     text = re.sub(r"```{=openxml}\s*```", "", text, flags=re.MULTILINE)
+    text = re.sub(r"(?m)^\s*%\s+.*$", "", text)
+    text = re.sub(r"「\s*」", "", text)
+    text = re.sub(r"(?m)^(\s*#{0,6}\s*)[▶▸►‣›>・●○■□◆◇◦]+\s*", r"\1", text)
+    text = re.sub(r"(?m)^(\s*#{0,6}\s*)[\"'“”‘’]+\s*", r"\1", text)
+    text = re.sub(r"([。\n])\s*[▶▸►‣›>・●○■□◆◇◦]+\s*", r"\1", text)
     text = re.sub(r"(?m)^#\s*.*99.*$", "# おわりに", text)
     text = re.sub(r"(?m)^.*第99章.*$", "おわりに", text)
     text = re.sub(r"(?m)^#\s*第99章\s*", "# おわりに ", text)
@@ -736,8 +741,6 @@ def build_merged_md(
     title: str, subtitle: str, author: str, manuscript_dir: Path, structure: dict
 ) -> str:
     cover = (
-        f"% {title}\n"
-        f"% {author}\n\n"
         f"# {title}\n\n"
         f"## {subtitle}\n\n"
         f"著者：{author}\n\n"
