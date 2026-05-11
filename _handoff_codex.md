@@ -26,6 +26,11 @@ Implemented per-author profile handling and prompt cleanup for Book Maker App.
 - Blank optional fields must not be forced into output.
 - `voice_type` and `failure_bank` are optional only.
 - Prompts instruct the model not to invent achievements, numbers, titles, case studies, or personal history not present in references/profile.
+- Latest output cleanup removes public-facing artifacts:
+  - leading `*` / `-` list markers
+  - OpenXML pagebreak tags
+  - `第99章`
+  - AI/ChatGPT/Gemini-origin wording
 
 ## Files touched in this pass
 - `templates/index.html`
@@ -84,3 +89,8 @@ vercel ls
 - Vercel production build required two fixes:
   - remove `pypandoc-binary` from production requirements and use local `pypandoc.py` shim
   - add `.vercelignore` for `build/`, `dist/`, `jobs/`, caches, and local artifacts
+- After the latest cleanup pass, verify generated Markdown no longer contains `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`, `第99章`, or obvious generation-origin wording.
+
+## Latest Docs
+- `README.md` was rewritten for current app behavior.
+- `FIRST_TIME_USER_MANUAL.md` was added for first-time users.

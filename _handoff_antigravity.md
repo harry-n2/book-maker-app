@@ -35,6 +35,7 @@ The app now supports different book-publishing clients/authors by collecting and
   - theme
   - target reader
   - author profile
+- Public-facing manuscript output should not contain internal generation artifacts such as `*`, OpenXML pagebreak tags, `第99章`, or AI/ChatGPT/Gemini-origin wording.
 
 ## Verification already run
 ```powershell
@@ -63,3 +64,12 @@ Prompt formatting was also smoke-tested through `_load_prompt()` for:
   - `pypandoc.py` local shim using system Pandoc when available, otherwise `python-docx` fallback
   - `requirements.txt` no longer installs `pypandoc-binary` in production
   - `.vercelignore` excludes `build/`, `dist/`, `jobs/`, cache files, and local handoff/build artifacts
+
+## Latest Output Cleanup Change
+- `generator.py` added final cleanup through `clean_public_manuscript()`.
+- `chapter.txt` and `reference.txt` prompts now forbid:
+  - `*` bullet markers
+  - `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`
+  - `第99章`
+  - AI/ChatGPT/Gemini-origin wording
+- README and `FIRST_TIME_USER_MANUAL.md` were updated for first-time users.

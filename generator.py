@@ -264,7 +264,7 @@ def _format_sections_for_prompt(sections: list[dict]) -> str:
 
 
 def generate_chapter(
-    cfg: BookConfig, ch: dict, chapter_number: int, title: str
+    cfg: BookConfig, ch: dict, chapter_number: int, title: str, chapter_label: str | None = None
 ) -> str:
     system_prompt = _system_prompt(cfg, title)
     sections_text = _format_sections_for_prompt(ch.get("sections", []))
@@ -276,9 +276,10 @@ def generate_chapter(
         "chapter.txt",
         cfg=cfg,
         chapter_number=chapter_number,
+        chapter_label=chapter_label or f"第{chapter_number}章",
         chapter_title=chapter_title,
         key_message=ch.get("key_message", ""),
-        voice_type=ch.get("voice_type", "正直宣言型"),
+        voice_type=ch.get("voice_type", ""),
         failure_bank=ch.get("failure_bank", ""),
         sections_text=sections_text,
     )
@@ -292,11 +293,12 @@ def generate_chapter(
     return body
 
 
-def generate_reference(cfg: BookConfig, ch: dict, chapter_number: int) -> str:
+def generate_reference(cfg: BookConfig, ch: dict, chapter_number: int, chapter_label: str | None = None) -> str:
     prompt = _load_prompt(
         "reference.txt",
         cfg=cfg,
         chapter_number=chapter_number,
+        chapter_label=chapter_label or f"第{chapter_number}章",
         chapter_title=ch.get("title", ""),
         key_message=ch.get("key_message", ""),
     )
@@ -529,7 +531,8 @@ def start_writing(
                 {"h2": "（節）", "summary": ch.get("key_message", ""), "subsections": []}
             ]
         chapter_number = 0 if is_intro else (99 if is_outro else i)
-        body = generate_chapter(cfg, ch, chapter_number, title)
+        chapter_label = "はじめに" if is_intro else ("おわりに" if is_outro else f"第{i}章")
+        body = clean_public_manuscript(generate_chapter(cfg, ch, chapter_number, title, chapter_label))
 
         full = body.rstrip()
         if not is_intro and not is_outro:
@@ -537,18 +540,18 @@ def start_writing(
             progress_cb(
                 f"{ch_num_label}のコピペブロックを生成中...", progress_pct
             )
-            ref_block = generate_reference(cfg, ch, chapter_number)
-            full = full + "\n\n" + ref_block + "\n"
+            ref_block = generate_reference(cfg, ch, chapter_number, chapter_label)
+            full = clean_public_manuscript(full + "\n\n" + ref_block + "\n")
 
         out_path = manuscript_dir / f"{ch.get('id','section')}.md"
-        out_path.write_text(full, encoding="utf-8")
+        out_path.write_text(clean_public_manuscript(full), encoding="utf-8")
 
     progress_cb("巻末の宣伝セクションを作成中...", 84)
-    promo = generate_promotion(cfg, structure)
+    promo = clean_public_manuscript(generate_promotion(cfg, structure))
     (manuscript_dir / "98_promotion.md").write_text(promo, encoding="utf-8")
 
     progress_cb("Kindle 紹介文を生成中...", 88)
-    desc = generate_description(cfg, structure)
+    desc = clean_public_manuscript(generate_description(cfg, structure))
     (job_dir / "book_description.md").write_text(desc, encoding="utf-8")
 
     progress_cb("統合 Markdown を生成中...", 92)
@@ -577,11 +580,7 @@ def start_writing(
 # ---------------------------------------------------------------------------
 
 
-PAGEBREAK_RAW = (
-    "```{=openxml}\n"
-    '<w:p><w:r><w:br w:type="page"/></w:r></w:p>\n'
-    "```"
-)
+PAGEBREAK_RAW = ""
 HEADING_RE = re.compile(r"^(#{1,3})\s")
 FENCE_RE = re.compile(r"^\s*```")
 
@@ -600,12 +599,33 @@ def insert_pagebreaks_before_headings(body: str) -> str:
                 out.pop()
             if out:
                 out.append("")
-            out.append(PAGEBREAK_RAW)
-            out.append("")
+            if PAGEBREAK_RAW:
+                out.append(PAGEBREAK_RAW)
+                out.append("")
             out.append(line)
             continue
         out.append(line)
     return "\n".join(out)
+
+
+def clean_public_manuscript(text: str) -> str:
+    text = re.sub(r"```{=openxml}.*?```", "", text, flags=re.DOTALL)
+    text = text.replace('<w:p><w:r><w:br w:type="page"/></w:r></w:p>', "")
+    text = re.sub(r"```{=openxml}\s*```", "", text, flags=re.MULTILINE)
+    text = re.sub(r"(?m)^#\s*.*99.*$", "# おわりに", text)
+    text = re.sub(r"(?m)^.*第99章.*$", "おわりに", text)
+    text = re.sub(r"(?m)^#\s*第99章\s*", "# おわりに ", text)
+    text = re.sub(r"(?m)^第99章\s*", "おわりに ", text)
+    text = re.sub(r"(?m)^(\s*)[*]\s+", r"\1", text)
+    text = re.sub(r"(?m)^(\s*)[-]\s+", r"\1", text)
+    text = re.sub(r"(?im)^.*(ChatGPT|Gemini|AI\s*generated).*$", "", text)
+    text = re.sub(r"(?i)AI生成", "", text)
+    text = re.sub(r"(?i)AIが作成", "", text)
+    text = re.sub(r"(?i)AIによる", "", text)
+    text = re.sub(r"(?i)ChatGPT", "", text)
+    text = re.sub(r"(?i)Gemini", "", text)
+    text = re.sub(r"(?i)AI\s*generated", "", text)
+    return re.sub(r"\n{3,}", "\n\n", text).strip() + "\n"
 
 
 def split_by_period(paragraph: str) -> list[str]:
@@ -737,7 +757,7 @@ def build_merged_md(
 
     body = "\n\n".join(body_parts)
     body_with_breaks = insert_pagebreaks_before_headings(body)
-    return cover + body_with_breaks + "\n"
+    return clean_public_manuscript(cover + body_with_breaks + "\n")
 
 
 def convert_to_docx(md_path: Path, docx_path: Path) -> None:
@@ -760,4 +780,5 @@ def convert_to_docx(md_path: Path, docx_path: Path) -> None:
         format="markdown+raw_attribute",
         extra_args=extra_args,
     )
+
 

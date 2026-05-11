@@ -45,6 +45,7 @@
 - `voice_type` and `failure_bank` are optional and should only be used when practical and grounded in the profile.
 - Prompts explicitly prohibit inventing achievements, numbers, titles, case studies, or personal history not present in the profile or references.
 - Reference material takes priority over generic assumptions.
+- Public manuscript cleanup removes leading `*` / `-` list markers, OpenXML pagebreak tags, `第99章`, and generation-origin phrases such as AI/ChatGPT/Gemini references.
 
 ## Verification
 - Ran Python compile check:
@@ -71,3 +72,8 @@
   - `jobs/`
   - `__pycache__/`
 - First deploy attempts failed at 607.78 MB and then 257.69 MB bundle sizes. Final deploy succeeded after dependency and artifact exclusions.
+
+## Latest Output Cleanup Change
+- `generator.py` now calls `clean_public_manuscript()` before saving chapter bodies, reference blocks, promotional text, description text, and merged Markdown.
+- `prompts/chapter.txt` and `prompts/reference.txt` now explicitly forbid OpenXML tags, `第99章`, `*` bullet markers, and generation-origin wording.
+- README and beginner manual were updated to describe this behavior.
