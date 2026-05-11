@@ -268,15 +268,21 @@ def generate_chapter(
 ) -> str:
     system_prompt = _system_prompt(cfg, title)
     sections_text = _format_sections_for_prompt(ch.get("sections", []))
+    effective_label = chapter_label or f"第{chapter_number}章"
     chapter_title = ch.get("title", "")
     if "：" in chapter_title:
         chapter_title = chapter_title.split("：", 1)[-1]
+
+    normalized_title = re.sub(r"^\s*#*\s*", "", chapter_title).strip()
+    normalized_title = re.sub(r"^\s*第\d+章\s*", "", normalized_title).strip()
+    if normalized_title in {effective_label, "\u306f\u3058\u3081\u306b", "\u304a\u308f\u308a\u306b"}:
+        chapter_title = ""
 
     user_prompt = _load_prompt(
         "chapter.txt",
         cfg=cfg,
         chapter_number=chapter_number,
-        chapter_label=chapter_label or f"第{chapter_number}章",
+        chapter_label=effective_label,
         chapter_title=chapter_title,
         key_message=ch.get("key_message", ""),
         voice_type=ch.get("voice_type", ""),
@@ -618,6 +624,11 @@ def clean_public_manuscript(text: str) -> str:
     text = re.sub(r"(?m)^第99章\s*", "おわりに ", text)
     text = re.sub(r"(?m)^(\s*)[*]\s+", r"\1", text)
     text = re.sub(r"(?m)^(\s*)[-]\s+", r"\1", text)
+    text = text.replace("*", "")
+    text = re.sub(r"(?m)^(#+\s*)?(\u306f\u3058\u3081\u306b)(?:\s+\2)+\s*$", r"\1\2", text)
+    text = re.sub(r"(?m)^(#+\s*)?(\u304a\u308f\u308a\u306b)(?:\s+\2)+\s*$", r"\1\2", text)
+    text = re.sub(r"(\u306f\u3058\u3081\u306b)\s+\1", r"\1", text)
+    text = re.sub(r"(\u304a\u308f\u308a\u306b)\s+\1", r"\1", text)
     text = re.sub(r"(?im)^.*(ChatGPT|Gemini|AI\s*generated).*$", "", text)
     text = re.sub(r"(?i)AI生成", "", text)
     text = re.sub(r"(?i)AIが作成", "", text)

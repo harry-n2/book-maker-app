@@ -1,79 +1,70 @@
 # Handoff for Claude Code
 
 ## Scope
+
 - Project: `C:\Users\naoya\myproject\book_maker_app`
-- Goal completed: per-author profile settings are now passed from UI to API to prompt generation, and prompts were cleaned so only practical, input-grounded content is produced.
+- Branch: `main`
+- Production alias: `https://bookmakerapp.vercel.app`
+- Current task: prevent public manuscripts from exposing generation artifacts, then push and deploy.
 
-## Implemented
-- Added author profile inputs in `templates/index.html`:
-  - display author name
-  - author background / achievements
-  - tone / writing style
-  - target keywords / reader traits
-  - optional failure examples
-  - optional voice types
-- Wired these fields through `static/app.js`:
-  - submit payload
-  - local project save/load
-  - new project reset
-- Wired these fields through `app.py`:
-  - `/generate-titles` form parameters
-  - `BookConfig` creation
-  - `JOB_STATE["cfg"]`
-  - `_cfg_from_state()` restoration for regeneration and writing steps
-- Updated `generator.py`:
-  - added `_clean_profile_kwargs()` and routed prompt rendering through it
-  - disabled strict validation that forced `voice_type` / `failure_bank` matching
-  - default chapter `voice_type` no longer forces a fixed type
-- Replaced prompt files in `prompts/` with practical, source-grounded instructions:
-  - `titles.txt`
-  - `titles_bestseller.txt`
-  - `system.txt`
-  - `structure.txt`
-  - `structure_bestseller.txt`
-  - `structure_modify.txt`
-  - `chapter.txt`
-  - `reference.txt`
-  - `promotion.txt`
-  - `description.txt`
-  - `outline.txt`
-- Hid nonessential `voice_type` / `failure_bank` badges in `static/style.css` to improve structure-review visibility.
+## Latest Change
 
-## Key Behavior
-- Profile fields are optional.
-- Empty profile fields are not forced into output.
-- `voice_type` and `failure_bank` are optional and should only be used when practical and grounded in the profile.
-- Prompts explicitly prohibit inventing achievements, numbers, titles, case studies, or personal history not present in the profile or references.
-- Reference material takes priority over generic assumptions.
-- Public manuscript cleanup removes leading `*` / `-` list markers, OpenXML pagebreak tags, `第99章`, and generation-origin phrases such as AI/ChatGPT/Gemini references.
+- `generator.py` now removes all asterisk characters from public manuscript text through `clean_public_manuscript()`.
+- `generator.py` now normalizes duplicate intro and outro headings such as `はじめに はじめに` and `おわりに おわりに`.
+- Chapter title cleanup now avoids duplicating the chapter label, `はじめに`, or `おわりに` when the model repeats it in the title field.
+- `prompts/chapter.txt` and `prompts/reference.txt` no longer contain a literal asterisk character and instruct the model not to use the asterisk symbol.
+- README and first-time user manual were rewritten with readable Japanese and the current output-cleanup behavior.
+
+## Existing Important Behavior
+
+- The app supports per-author profile fields from UI to API to prompt rendering.
+- Empty profile fields must not be forced into generated output.
+- The model must not invent achievements, numbers, titles, case studies, or personal history absent from the profile or references.
+- Reference material and explicit user input take priority over generic assumptions.
+- Public output cleanup removes:
+  - asterisk characters
+  - OpenXML pagebreak tags
+  - unnecessary `第99章`
+  - AI, ChatGPT, Gemini, or similar generation-origin wording
+  - duplicated intro and outro headings
+
+## Files Updated
+
+- `generator.py`
+- `prompts/chapter.txt`
+- `prompts/reference.txt`
+- `README.md`
+- `FIRST_TIME_USER_MANUAL.md`
+- `_handoff_claude_code.md`
+- `_handoff_antigravity.md`
+- `_handoff_codex.md`
 
 ## Verification
-- Ran Python compile check:
-  - `python -m py_compile app.py generator.py references.py _resource.py`
-- Ran JS syntax check:
-  - `node --check static\app.js`
-- Ran prompt formatting smoke test for all prompt files via `_load_prompt()` with dummy data.
+
+Run before handing off:
+
+```powershell
+python -m py_compile app.py generator.py references.py _resource.py pypandoc.py
+node --check static\app.js
+```
+
+Also verify:
+
+- `clean_public_manuscript()` removes asterisk characters.
+- `clean_public_manuscript()` removes duplicated `はじめに` and `おわりに`.
+- `_load_prompt()` can render `chapter.txt` and `reference.txt` without a literal asterisk character.
+
+## Deployment
+
+- Push to `origin/main`.
+- Deploy with Vercel production.
+- Update this section with the final commit hash, deployment URL, and inspect URL after deployment.
 
 ## Notes
-- PowerShell profile execution policy warnings appeared in command output but did not block checks.
-- `git status` may fail under sandbox user due dubious ownership unless `safe.directory` is configured.
 
-## GitHub / Vercel Deployment
-- Pushed to `origin/main`.
-- Latest deployment alias: `https://bookmakerapp.vercel.app`
-- Production deployment URL: `https://bookmaker-b1f6jxddu-harry-n2.vercel.app`
-- Vercel inspect URL: `https://vercel.com/harry-n2/book_maker_app/GKGtP44XHz1SPE8KkRQda2GtGKJk`
+- PowerShell profile execution-policy warnings may appear and can be ignored if commands continue.
+- The local Vercel command that avoids the blocked `vercel.ps1` execution policy is:
 
-## Deployment Fixes
-- Added local `pypandoc.py` shim and moved `pypandoc-binary` out of production requirements to avoid Vercel Python bundle size failure.
-- Added `.vercelignore` to exclude local build artifacts:
-  - `build/`
-  - `dist/`
-  - `jobs/`
-  - `__pycache__/`
-- First deploy attempts failed at 607.78 MB and then 257.69 MB bundle sizes. Final deploy succeeded after dependency and artifact exclusions.
-
-## Latest Output Cleanup Change
-- `generator.py` now calls `clean_public_manuscript()` before saving chapter bodies, reference blocks, promotional text, description text, and merged Markdown.
-- `prompts/chapter.txt` and `prompts/reference.txt` now explicitly forbid OpenXML tags, `第99章`, `*` bullet markers, and generation-origin wording.
-- README and beginner manual were updated to describe this behavior.
+```powershell
+& 'C:\Users\naoya\AppData\Roaming\npm\vercel.cmd' --prod --yes
+```

@@ -1,16 +1,16 @@
 # Book Maker
 
-Book Maker は、テーマ・著者プロフィール・参考資料から、Kindle向けの原稿を生成するWebアプリです。
+Book Maker は、テーマ、著者プロフィール、参考資料から Kindle 向けの原稿を作る Web アプリです。
 
-初めて使う方は、まず [FIRST_TIME_USER_MANUAL.md](./FIRST_TIME_USER_MANUAL.md) を読んでください。
+初めて使う場合は、先に [FIRST_TIME_USER_MANUAL.md](./FIRST_TIME_USER_MANUAL.md) を確認してください。
 
 ## できること
 
 - 参考資料を読み込んで本の材料にする
-- タイトル候補を10個生成する
+- タイトル候補を作成する
 - 選んだタイトルから章立てを作る
-- 章立てを確認・修正してから本文を生成する
-- Markdown / Word / Kindle商品説明文を出力する
+- 章立てを確認、修正してから本文を生成する
+- Markdown、Word、Kindle 商品説明文を出力する
 - 著者ごとに口調、背景、実績、読者像を調整する
 - 出力本文から内部タグ、不要な記号、生成由来が分かる表記を自動で除去する
 
@@ -18,14 +18,11 @@ Book Maker は、テーマ・著者プロフィール・参考資料から、Kin
 
 - Gemini API キー
 - 本のテーマ
-- 著者名・著者プロフィール
+- 著者名、著者プロフィール
 - 参考資料
-  - URL
-  - PDF / Word / Markdown / Text / CSV
-  - 画像
-  - テキスト直接貼り付け
+- URL、PDF、Word、Markdown、Text、CSV、画像、またはテキスト直接貼り付け
 
-## Web版
+## Web 版
 
 https://bookmakerapp.vercel.app
 
@@ -52,42 +49,51 @@ chmod +x start.sh
 
 1. テーマ、読者、著者情報を入力する
 2. 参考資料を入れる
-3. Gemini APIキーを入力する
+3. Gemini API キーを入力する
 4. 参考資料の読み込み結果を確認する
 5. タイトル候補から1つ選ぶ
-6. 章立てを確認・必要なら修正する
+6. 章立てを確認し、必要なら修正する
 7. 本文を生成する
-8. Markdown / Word / 商品説明文をダウンロードする
+8. Markdown、Word、商品説明文をダウンロードする
 
 ## 出力ファイル
 
 | ファイル | 内容 |
 |---|---|
-| `book_full.md` | 本文全文のMarkdown |
-| `book_full.docx` | 本文全文のWord |
+| `book_full.md` | 本文全文の Markdown |
+| `book_full.docx` | 本文全文の Word |
 | `title_candidates.md` | タイトル候補一覧 |
-| `book_description.md` | Kindle商品説明文 |
-| `book_for_notebooklm.md` | NotebookLM確認用 |
+| `book_description.md` | Kindle 商品説明文 |
+| `book_for_notebooklm.md` | NotebookLM 確認用 |
+
+## 出力時の整形
+
+本文出力時には、読者に見せる必要がない表記を自動で削除します。
+
+- アスタリスク記号
+- OpenXML の改ページタグ
+- 不要な「第99章」
+- AI、ChatGPT、Gemini など生成由来が分かる表記
+- 「はじめに はじめに」「おわりに おわりに」のような重複見出し
 
 ## 注意点
 
 - 生成結果は出版前に必ず確認してください。
-- 著者プロフィールや参考資料にない実績・数字・事例は入力しない限り使わない設計です。
-- 出力時に `*`、OpenXML改ページタグ、`第99章`、生成由来が分かる表記は除去されます。
-- URL取得に失敗する場合は、テキスト直貼り欄に本文を貼るのが確実です。
-- Vercel版では長時間生成や大容量ファイルで制限に当たる場合があります。その場合はローカル版を使ってください。
+- 著者プロフィールや参考資料にない実績、数字、事例は、入力しない限り使わない設計です。
+- URL 取得に失敗する場合は、テキスト直貼り欄に本文を貼るのが確実です。
+- Vercel 版では長時間生成や大容量ファイルで制限に当たる場合があります。その場合はローカル版を使ってください。
 
 ## 開発者向け
 
 主要ファイル:
 
-- `app.py`: FastAPIアプリ本体
+- `app.py`: FastAPI アプリ本体
 - `generator.py`: 書籍生成ロジック
 - `references.py`: 参考資料の取り込み
 - `templates/index.html`: 画面
 - `static/app.js`: フロントエンド処理
 - `prompts/`: 生成プロンプト
-- `api/index.py`: Vercel用エントリ
+- `api/index.py`: Vercel 用エントリ
 
 確認コマンド:
 

@@ -1,96 +1,83 @@
 # Handoff for Codex
 
 ## Project
+
 - Path: `C:\Users\naoya\myproject\book_maker_app`
 - Repository: `https://github.com/harry-n2/book-maker-app`
 - Branch: `main`
-- Vercel app: `https://bookmakerapp.vercel.app`
+- Production alias: `https://bookmakerapp.vercel.app`
 
 ## Latest Work
-Implemented per-author profile handling and prompt cleanup for Book Maker App.
 
-### Behavior now expected
-- Each book publishing client can set their own:
-  - author display name
-  - background / achievements
-  - tone / writing style
-  - reader keywords
-  - optional failure examples
-  - optional voice types
-- These values flow through:
-  - `templates/index.html`
-  - `static/app.js`
-  - `app.py`
-  - `BookConfig`
-  - `prompts/*.txt`
-- Blank optional fields must not be forced into output.
-- `voice_type` and `failure_bank` are optional only.
-- Prompts instruct the model not to invent achievements, numbers, titles, case studies, or personal history not present in references/profile.
-- Latest output cleanup removes public-facing artifacts:
-  - leading `*` / `-` list markers
-  - OpenXML pagebreak tags
-  - `第99章`
-  - AI/ChatGPT/Gemini-origin wording
+Updated public manuscript cleanup so generated books do not contain visible generation artifacts.
 
-## Files touched in this pass
-- `templates/index.html`
-  - Added "出版希望者プロフィール" input block.
-- `static/app.js`
-  - Added payload fields, project save/load, and reset handling for profile data.
-- `app.py`
-  - Added form parameters and state restore for profile data.
+Current expected cleanup:
+
+- Remove all asterisk characters.
+- Remove OpenXML pagebreak tags.
+- Remove unnecessary `第99章`.
+- Remove AI, ChatGPT, Gemini, or similar generation-origin wording.
+- Collapse duplicated `はじめに` and `おわりに`.
+- Prevent repeated chapter headings when the chapter title repeats the chapter label or intro/outro label.
+
+Prompt updates:
+
+- `prompts/chapter.txt` and `prompts/reference.txt` avoid literal asterisk characters.
+- The prompts instruct the model not to use the asterisk symbol.
+- The prompts instruct the model not to output duplicate `はじめに` or `おわりに`.
+
+Documentation updates:
+
+- `README.md` was rewritten in readable Japanese.
+- `FIRST_TIME_USER_MANUAL.md` was rewritten as a concise first-time user manual.
+- Claude Code, Antigravity, and Codex handoff files were updated for the latest cleanup behavior.
+
+## Files Touched
+
 - `generator.py`
-  - Added `_clean_profile_kwargs()`.
-  - Routed prompt formatting through clean profile defaults.
-  - Disabled strict `voice_type` / `failure_bank` validation.
-  - Removed forced default chapter voice type.
-- `static/style.css`
-  - Hid low-value structure meta badges for readability.
-- `prompts/`
-  - Rewrote practical, source-grounded prompts.
+- `prompts/chapter.txt`
+- `prompts/reference.txt`
+- `README.md`
+- `FIRST_TIME_USER_MANUAL.md`
 - `_handoff_claude_code.md`
 - `_handoff_antigravity.md`
 - `_handoff_codex.md`
 
-## Verification already run
+## Verification Required
+
 ```powershell
-python -m py_compile app.py generator.py references.py _resource.py
+python -m py_compile app.py generator.py references.py _resource.py pypandoc.py
 node --check static\app.js
 ```
 
-Prompt formatting smoke test was also run for all prompt files through `_load_prompt()`.
+Smoke tests should verify:
 
-## Git / Deploy
-The user requested push to GitHub and Vercel production deployment.
+- `clean_public_manuscript()` removes asterisk characters.
+- `clean_public_manuscript()` collapses duplicated `はじめに` and `おわりに`.
+- `_load_prompt()` renders `chapter.txt` and `reference.txt` without a literal asterisk character.
 
-- Pushed to `origin/main`.
-- Production alias: `https://bookmakerapp.vercel.app`
-- Deployment URL: `https://bookmaker-b1f6jxddu-harry-n2.vercel.app`
-- Inspect URL: `https://vercel.com/harry-n2/book_maker_app/GKGtP44XHz1SPE8KkRQda2GtGKJk`
+## Existing Behavior To Preserve
 
-Recent deployment-related commits:
-- `6855cca feat: support per-author book profiles`
-- `dc6fef0 fix: reduce Vercel Python bundle size`
-- `bdb20df chore: exclude local artifacts from Vercel`
+- Per-author profile fields flow from UI to API to prompt rendering.
+- Blank profile fields are optional and must not be forced into generated output.
+- The system must not invent achievements, numbers, titles, case studies, or personal history absent from references or profile data.
+- Reference material takes priority over generic assumptions.
+- Vercel production uses the alias `https://bookmakerapp.vercel.app`.
 
-Check latest commit and deployment status before continuing:
+## Deployment
+
+After this change:
+
+- Push to `origin/main`.
+- Deploy to Vercel production.
+- Record final commit hash, production deployment URL, and inspect URL in all three handoff files.
+
+## Notes
+
+- Use this Vercel command to avoid the local PowerShell script execution policy issue:
 
 ```powershell
-git -C "C:\Users\naoya\myproject\book_maker_app" log --oneline -5
-vercel ls
+& 'C:\Users\naoya\AppData\Roaming\npm\vercel.cmd' --prod --yes
 ```
 
-## Known Cautions
-- PowerShell profile execution-policy warnings appear in command output but did not block checks.
-- The sandbox user required:
-  `git config --global --add safe.directory C:/Users/naoya/myproject/book_maker_app`
-- Existing UI text still contains older mojibake in several labels. The newest profile block and prompt behavior are the relevant functional changes from this pass.
-- Live Gemini generation was not run during the implementation pass.
-- Vercel production build required two fixes:
-  - remove `pypandoc-binary` from production requirements and use local `pypandoc.py` shim
-  - add `.vercelignore` for `build/`, `dist/`, `jobs/`, caches, and local artifacts
-- After the latest cleanup pass, verify generated Markdown no longer contains `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`, `第99章`, or obvious generation-origin wording.
-
-## Latest Docs
-- `README.md` was rewritten for current app behavior.
-- `FIRST_TIME_USER_MANUAL.md` was added for first-time users.
+- PowerShell profile execution-policy warnings can be ignored if the requested command still runs.
