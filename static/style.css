@@ -587,30 +587,6 @@ footer {
 .primary-btn { background: var(--primary); }
 .primary-btn:hover { background: var(--primary-dark); }
 
-.modify-panel {
-  margin-top: 16px;
-  padding: 16px;
-  background: #fafbfd;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-}
-.modify-panel label {
-  display: block;
-  font-weight: 600;
-  font-size: 14px;
-  margin-bottom: 8px;
-}
-.modify-panel textarea {
-  width: 100%;
-  font-size: 14px;
-}
-.modify-actions {
-  display: flex;
-  gap: 10px;
-  margin-top: 12px;
-}
-.modify-actions button { flex: 1; }
-
 /* 章立て生成中の不確定プログレスバー */
 .progress-bar .indeterminate {
   height: 100%;

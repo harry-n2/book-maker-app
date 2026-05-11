@@ -1,47 +1,40 @@
 # Handoff for Claude Code
 
-## Scope
+## Project
 
-- Project: `C:\Users\naoya\myproject\book_maker_app`
+- Path: `C:\Users\naoya\myproject\book_maker_app`
+- Repository: `https://github.com/harry-n2/book-maker-app`
 - Branch: `main`
 - Production alias: `https://bookmakerapp.vercel.app`
-- Current task: prevent public manuscripts from exposing generation artifacts, then push and deploy.
 
 ## Latest Change
 
-- `generator.py` now removes all asterisk characters from public manuscript text through `clean_public_manuscript()`.
-- `generator.py` now normalizes duplicate intro and outro headings such as `はじめに はじめに` and `おわりに おわりに`.
-- Chapter title cleanup now avoids duplicating the chapter label, `はじめに`, or `おわりに` when the model repeats it in the title field.
-- `prompts/chapter.txt` and `prompts/reference.txt` no longer contain a literal asterisk character and instruct the model not to use the asterisk symbol.
-- README and first-time user manual were rewritten with readable Japanese and the current output-cleanup behavior.
+The generated book must always contain a table of contents directly under `はじめに`.
 
-## Existing Important Behavior
+Implementation details:
 
-- The app supports per-author profile fields from UI to API to prompt rendering.
-- Empty profile fields must not be forced into generated output.
-- The model must not invent achievements, numbers, titles, case studies, or personal history absent from the profile or references.
-- Reference material and explicit user input take priority over generic assumptions.
-- Public output cleanup removes:
-  - asterisk characters
-  - OpenXML pagebreak tags
-  - unnecessary `第99章`
-  - AI, ChatGPT, Gemini, or similar generation-origin wording
-  - duplicated intro and outro headings
+- `generator.py` now builds a manual TOC from `structure.json`.
+- The TOC is inserted immediately after the first intro H1.
+- Intro/outro H1s are normalized to `# はじめに` and `# おわりに`.
+- Main chapter H1s are normalized from the approved chapter structure.
+- Pandoc `--toc` was removed to prevent the TOC from appearing before the intro.
 
-## Files Updated
+UI correction:
 
-- `generator.py`
-- `prompts/chapter.txt`
-- `prompts/reference.txt`
-- `README.md`
-- `FIRST_TIME_USER_MANUAL.md`
-- `_handoff_claude_code.md`
-- `_handoff_antigravity.md`
-- `_handoff_codex.md`
+- The expand/collapse-style partial-edit panel was removed.
+- `templates/index.html` no longer includes the modify panel controls.
+- `static/app.js` no longer binds modify-panel open/cancel/submit handlers.
+- `static/style.css` no longer includes modify-panel styling.
 
-## Verification
+## Preserve
 
-Run before handing off:
+- Manual TOC directly under `はじめに`.
+- Existing manuscript artifact cleanup.
+- Per-author profile fields from UI to API to prompt rendering.
+- Optional blank profile fields.
+- Reference material priority over generic assumptions.
+
+## Verify
 
 ```powershell
 python -m py_compile app.py generator.py references.py _resource.py pypandoc.py
@@ -50,23 +43,9 @@ node --check static\app.js
 
 Also verify:
 
-- `clean_public_manuscript()` removes asterisk characters.
-- `clean_public_manuscript()` removes duplicated `はじめに` and `おわりに`.
-- `_load_prompt()` can render `chapter.txt` and `reference.txt` without a literal asterisk character.
+- `## 目次` appears immediately under `# はじめに` in a merged manuscript.
+- No `open-modify-btn`, `modify-panel`, `modifyInstruction`, `cancelModifyBtn`, `submitModifyBtn`, or `openModifyBtn` UI references remain.
 
-## Deployment
+## Caution
 
-- Pushed to `origin/main`.
-- Final implementation commit: `f57ed0e fix: clean manuscript artifacts`
-- Production alias: `https://bookmakerapp.vercel.app`
-- Production deployment URL: `https://bookmaker-ctcpaz30k-harry-n2.vercel.app`
-- Vercel inspect URL: `https://vercel.com/harry-n2/book_maker_app/8Ao6HP7cLPCaK6CVZNA4ozULgTtf`
-
-## Notes
-
-- PowerShell profile execution-policy warnings may appear and can be ignored if commands continue.
-- The local Vercel command that avoids the blocked `vercel.ps1` execution policy is:
-
-```powershell
-& 'C:\Users\naoya\AppData\Roaming\npm\vercel.cmd' --prod --yes
-```
+Do not remove the TOC again. The TOC placement under `はじめに` is mandatory.

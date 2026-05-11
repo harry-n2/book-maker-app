@@ -2,43 +2,30 @@
 
 ## Project
 
-`C:\Users\naoya\myproject\book_maker_app`
+- Path: `C:\Users\naoya\myproject\book_maker_app`
+- Repository: `https://github.com/harry-n2/book-maker-app`
+- Branch: `main`
+- Production alias: `https://bookmakerapp.vercel.app`
 
-Production alias: `https://bookmakerapp.vercel.app`
+## Current Required Behavior
 
-## Latest Change
+- The final merged manuscript must always place `## 目次` directly under `# はじめに`.
+- The TOC is deterministic and generated from `structure.json`.
+- Pandoc automatic TOC generation is disabled because it places the TOC outside the required intro position.
+- The intro heading is forced to `# はじめに`.
+- The outro heading is forced to `# おわりに`.
+- Main chapter headings are forced from the approved chapter order and title.
+- The expand/collapse partial-edit panel has been removed from the structure review UI.
 
-The public manuscript output was tightened so generated files do not expose generation artifacts.
-
-Implemented behavior:
-
-- Remove all asterisk characters from public manuscript text.
-- Remove OpenXML pagebreak tags from public manuscript text.
-- Remove unnecessary `第99章`.
-- Remove AI, ChatGPT, Gemini, or similar generation-origin wording.
-- Normalize duplicated intro and outro headings such as `はじめに はじめに` and `おわりに おわりに`.
-- Avoid forcing duplicated `はじめに` or `おわりに` when a chapter title repeats the chapter label.
-- Keep `chapter.txt` and `reference.txt` free of literal asterisk characters.
-
-## Relevant Files
+## Files Changed
 
 - `generator.py`
-  - `clean_public_manuscript()` is the final public-output cleanup function.
-  - `generate_chapter()` now normalizes repeated chapter title values before prompt rendering.
-- `prompts/chapter.txt`
-- `prompts/reference.txt`
-- `README.md`
-- `FIRST_TIME_USER_MANUAL.md`
+- `templates/index.html`
+- `static/app.js`
+- `static/style.css`
 - `_handoff_claude_code.md`
 - `_handoff_antigravity.md`
 - `_handoff_codex.md`
-
-## Existing App Behavior
-
-- Each publishing client can set their own author name, background, achievements, tone, target reader, keywords, and optional examples.
-- Blank profile fields are not forced into manuscripts.
-- Prompts should only use facts present in profile fields or reference material.
-- Failure examples and voice types are optional context, not required decorations.
 
 ## Verification
 
@@ -49,21 +36,12 @@ python -m py_compile app.py generator.py references.py _resource.py pypandoc.py
 node --check static\app.js
 ```
 
-Then run a smoke test that checks:
+Check manually or with search:
 
-- no asterisk character remains after `clean_public_manuscript()`
-- duplicated `はじめに` and `おわりに` are collapsed
-- `chapter.txt` and `reference.txt` render without a literal asterisk character
+- `book_full.md` contains `# はじめに`, then `## 目次` immediately below it.
+- The TOC includes intro, each chapter, outro, and promotion.
+- No UI references remain for `open-modify-btn`, `modify-panel`, `modifyInstruction`, `cancelModifyBtn`, `submitModifyBtn`, or `openModifyBtn`.
 
-## Deployment
+## Important
 
-- Pushed to GitHub `origin/main`.
-- Final implementation commit: `f57ed0e fix: clean manuscript artifacts`
-- Production alias: `https://bookmakerapp.vercel.app`
-- Production deployment URL: `https://bookmaker-ctcpaz30k-harry-n2.vercel.app`
-- Vercel inspect URL: `https://vercel.com/harry-n2/book_maker_app/8Ao6HP7cLPCaK6CVZNA4ozULgTtf`
-
-## Cautions
-
-- No live Gemini generation is required for syntax verification, but real output quality should be checked with an API key.
-- PowerShell profile execution-policy warnings are expected in this environment and did not block prior checks.
+Do not reintroduce TOC removal or automatic relocation. The user explicitly requires the TOC directly under `はじめに`.

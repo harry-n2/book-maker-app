@@ -737,6 +737,51 @@ def apply_period_breaks(text: str) -> str:
     return result
 
 
+def _clean_heading_text(value: str) -> str:
+    value = re.sub(r"^\s*#*\s*", "", value or "").strip()
+    value = re.sub(r"^\s*\u7b2c\d+\u7ae0\s*", "", value).strip()
+    value = re.sub(r"^(\u306f\u3058\u3081\u306b|\u304a\u308f\u308a\u306b)\s+", "", value).strip()
+    value = re.sub(r"^[\s:：\-‐ー－、。・/／]+", "", value).strip()
+    return value
+
+
+def _section_heading(label: str, title: str, include_title: bool = True) -> str:
+    title = _clean_heading_text(title)
+    if not include_title or not title or title == label:
+        return f"# {label}"
+    return f"# {label} {title}"
+
+
+def _replace_first_h1(text: str, heading: str) -> str:
+    lines = text.split("\n")
+    for idx, line in enumerate(lines):
+        if re.match(r"^#\s+", line):
+            lines[idx] = heading
+            return "\n".join(lines)
+    return heading + "\n\n" + text.lstrip()
+
+
+def _build_manual_toc(structure: dict) -> str:
+    entries: list[str] = ["## \u76ee\u6b21", ""]
+    entries.append(f"1. \u306f\u3058\u3081\u306b")
+    for idx, ch in enumerate(structure.get("chapters", []), 2):
+        label = f"\u7b2c{idx - 1}\u7ae0"
+        title = _clean_heading_text(ch.get("title", ""))
+        entries.append(f"{idx}. {label} {title}".rstrip())
+    outro_index = len(structure.get("chapters", [])) + 2
+    entries.append(f"{outro_index}. \u304a\u308f\u308a\u306b")
+    entries.append(f"{outro_index + 1}. \u5dfb\u672b\u6848\u5185")
+    return "\n".join(entries)
+
+
+def _insert_toc_after_first_h1(text: str, toc: str) -> str:
+    lines = text.split("\n")
+    for idx, line in enumerate(lines):
+        if re.match(r"^#\s+", line):
+            return "\n".join(lines[: idx + 1] + ["", toc, ""] + lines[idx + 1 :])
+    return toc + "\n\n" + text
+
+
 def build_merged_md(
     title: str, subtitle: str, author: str, manuscript_dir: Path, structure: dict
 ) -> str:
@@ -766,6 +811,19 @@ def build_merged_md(
         if not fpath.exists():
             continue
         text = fpath.read_text(encoding="utf-8")
+        if fid == intro.get("id"):
+            text = _replace_first_h1(text, _section_heading("\u306f\u3058\u3081\u306b", intro.get("title", ""), False))
+            text = _insert_toc_after_first_h1(text, _build_manual_toc(structure))
+        elif fid == outro.get("id"):
+            text = _replace_first_h1(text, _section_heading("\u304a\u308f\u308a\u306b", outro.get("title", ""), False))
+        else:
+            for idx, ch in enumerate(chapters, 1):
+                if fid == ch.get("id"):
+                    text = _replace_first_h1(
+                        text,
+                        _section_heading(f"\u7b2c{idx}\u7ae0", ch.get("title", "")),
+                    )
+                    break
         text = apply_period_breaks(text)
         body_parts.append(text.strip())
 
@@ -777,7 +835,7 @@ def build_merged_md(
 def convert_to_docx(md_path: Path, docx_path: Path) -> None:
     import pypandoc
 
-    extra_args = ["--standalone", "--toc", "--toc-depth=3"]
+    extra_args = ["--standalone"]
     # v1.2: 視認性向上版（コピペ枠・ケーススタディBOX のスタイル拡張）を優先。
     # v8 が無ければ v7 にフォールバック、それも無ければ Pandoc 既定。
     ref_v8 = _resource.resource("templates", "reference_v8.docx")

@@ -28,11 +28,6 @@
   const structureTree = $("structure-tree");
   const approveStructureBtn = $("approve-structure-btn");
   const regenStructureBtn = $("regen-structure-btn");
-  const openModifyBtn = $("open-modify-btn");
-  const modifyPanel = $("modify-panel");
-  const modifyInstruction = $("modify-instruction");
-  const cancelModifyBtn = $("cancel-modify-btn");
-  const submitModifyBtn = $("submit-modify-btn");
   const structureRegenNote = $("structure-regen-note");
   const progressFill = $("progress-fill");
   const progressPct = $("progress-pct");
@@ -61,7 +56,6 @@
   let maxRegenPerStage = 3;
   let titlesRegenCount = 0;
   let structureRegenCount = 0;
-  let structureModifyCount = 0;
 
   // -------------------------------------------------------------------
   // UI helpers
@@ -95,7 +89,6 @@
     selectedIndex = -1;
     titlesRegenCount = 0;
     structureRegenCount = 0;
-    structureModifyCount = 0;
     submitBtn.disabled = false;
     submitBtn.textContent = "参照素材を取り込んで次へ →";
     setProgress(0, "準備中…");
@@ -371,11 +364,9 @@
   }
   function updateStructureRegenNote() {
     const regenRemain = Math.max(0, maxRegenPerStage - structureRegenCount);
-    const modifyRemain = Math.max(0, maxRegenPerStage - structureModifyCount);
     structureRegenNote.textContent =
-      `章立て再生成 残り ${regenRemain} 回 ／ 部分修正 残り ${modifyRemain} 回（各 ${maxRegenPerStage} 回まで）。`;
+      `構成再生成 残り ${regenRemain} 回（最大 ${maxRegenPerStage} 回まで）`;
     regenStructureBtn.disabled = regenRemain <= 0;
-    openModifyBtn.disabled = modifyRemain <= 0;
   }
 
   // -------------------------------------------------------------------
@@ -406,11 +397,6 @@
   }
   async function regenerateStructure(jobId) {
     return postJson(`/regenerate-structure/${jobId}`);
-  }
-  async function modifyStructure(jobId, instruction) {
-    const fd = new FormData();
-    fd.append("user_instruction", instruction);
-    return postJson(`/modify-structure/${jobId}`, fd);
   }
   async function approveStructure(jobId) {
     return postJson(`/approve-structure/${jobId}`);
@@ -462,7 +448,6 @@
     if (typeof state.max_regen_per_stage === "number") maxRegenPerStage = state.max_regen_per_stage;
     if (typeof state.titles_regen_count === "number") titlesRegenCount = state.titles_regen_count;
     if (typeof state.structure_regen_count === "number") structureRegenCount = state.structure_regen_count;
-    if (typeof state.structure_modify_count === "number") structureModifyCount = state.structure_modify_count;
 
     if (state.status === "generating_structure") {
       hideAllSections();
@@ -474,15 +459,12 @@
       structureGeneratingMessage.textContent = state.message || "章立てを更新中…";
     } else if (state.status === "structure_review") {
       // 章立てレビュー画面はユーザー入力待ちの停止状態。ここでポーリングを止めないと、
-      // 2秒ごとに hide(modifyPanel) が走って入力窓が消えてしまう。
       clearPoll();
       currentStructure = state.structure || currentStructure;
       hideAllSections();
       show(structureReviewSection);
       renderStructure(currentStructure);
       updateStructureRegenNote();
-      hide(modifyPanel);
-      modifyInstruction.value = "";
       resetStructureButtons();
     } else if (state.status === "running") {
       hideAllSections();
@@ -508,9 +490,6 @@
     approveStructureBtn.disabled = false;
     approveStructureBtn.textContent = "1. この章立てで本編を作成 →";
     regenStructureBtn.textContent = "2. さらにベストセラーが取れる構成で再出力";
-    openModifyBtn.textContent = "3. 部分修正箇所を指示する";
-    submitModifyBtn.disabled = false;
-    submitModifyBtn.textContent = "この指示で修正";
   }
 
   // -------------------------------------------------------------------
@@ -561,7 +540,6 @@
       titlesRegenCount = 0;
       maxRegenPerStage = data.max_regen_per_stage || 3;
       structureRegenCount = 0;
-      structureModifyCount = 0;
       upsertProject({
         id: projectId,
         name: payload.project_name || "未命名",
@@ -698,39 +676,6 @@
     }
   });
 
-  // -------------------------------------------------------------------
-  // 章立て：部分修正
-  // -------------------------------------------------------------------
-  openModifyBtn.addEventListener("click", () => {
-    show(modifyPanel);
-    modifyInstruction.focus();
-  });
-  cancelModifyBtn.addEventListener("click", () => {
-    hide(modifyPanel);
-    modifyInstruction.value = "";
-  });
-  submitModifyBtn.addEventListener("click", async () => {
-    const instruction = modifyInstruction.value.trim();
-    if (!instruction) {
-      alert("修正指示を入力してください。");
-      return;
-    }
-    if (!currentJobId) return;
-    submitModifyBtn.disabled = true;
-    submitModifyBtn.textContent = "修正中…";
-    try {
-      await modifyStructure(currentJobId, instruction);
-      startPolling(currentJobId);
-    } catch (err) {
-      alert(err.message || "部分修正に失敗しました。");
-      submitModifyBtn.disabled = false;
-      submitModifyBtn.textContent = "この指示で修正";
-    }
-  });
-
-  // -------------------------------------------------------------------
-  // 章立て：承認 → 本編生成（バックグラウンド・5〜10分）
-  // -------------------------------------------------------------------
   approveStructureBtn.addEventListener("click", async () => {
     if (!currentJobId) return;
     if (!confirm("この章立てで本編を作成します（5〜10分かかります。Gemini無料枠を数百req消費）。よろしいですか？")) return;
