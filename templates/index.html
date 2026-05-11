@@ -101,7 +101,7 @@
 
       <button type="submit" id="submit-btn">タイトル候補10選を作る</button>
     </form>
-    <p class="note">最初に「タイトル候補10選」をAIが作ります（30〜60秒）。その中から1つを選ぶと本編生成が始まります。</p>
+    <p class="note">最初に「タイトル候補10選」をAIが作ります（30〜60秒）。1つ選ぶと章立て案が生成され、内容を確認・修正してから本編生成に進みます。</p>
   </section>
 
   <section id="title-pick-section" class="hidden">
@@ -110,9 +110,39 @@
     <ul id="title-cards"></ul>
     <div class="title-pick-actions">
       <button type="button" id="back-btn" class="secondary-btn">← フォームに戻る</button>
-      <button type="button" id="confirm-title-btn" disabled>このタイトルで本を作る →</button>
+      <button type="button" id="regen-titles-btn" class="secondary-btn">★ さらにベストセラー獲得できるタイトル10選を再出力</button>
+      <button type="button" id="confirm-title-btn" disabled>このタイトルで章立てを作る →</button>
     </div>
-    <p class="note">気に入る候補がない場合は「フォームに戻る」を押してテーマを書き直してから再生成してください。</p>
+    <p class="note" id="titles-regen-note">タイトル再生成は最大3回まで使えます。</p>
+  </section>
+
+  <section id="structure-generating-section" class="hidden">
+    <h2>章立てを生成中です。30〜60秒程度かかります。</h2>
+    <div class="progress-wrap">
+      <div class="progress-bar"><div class="indeterminate"></div></div>
+    </div>
+    <p id="structure-generating-message">章立てを構築中…</p>
+  </section>
+
+  <section id="structure-review-section" class="hidden">
+    <h2>章立て案をご確認ください</h2>
+    <p class="note">本編作成の前に章立てを確認してください。「2. ベストセラー再出力」「3. 部分修正」で納得いくまで調整できます。</p>
+    <div id="structure-title-banner" class="structure-title-banner"></div>
+    <div id="structure-tree" class="structure-tree"></div>
+    <div class="structure-actions">
+      <button type="button" id="approve-structure-btn" class="primary-btn">1. この章立てで本編を作成 →</button>
+      <button type="button" id="regen-structure-btn" class="secondary-btn">2. さらにベストセラーが取れる構成で再出力</button>
+      <button type="button" id="open-modify-btn" class="secondary-btn">3. 部分修正箇所を指示する</button>
+    </div>
+    <div id="modify-panel" class="modify-panel hidden">
+      <label for="modify-instruction">修正指示（自由記述）</label>
+      <textarea id="modify-instruction" rows="4" placeholder="例：第3章のH2タイトルに『年収1,000万のロジック』を追加してほしい／第1章をもっと痛みの強い構成にしてほしい"></textarea>
+      <div class="modify-actions">
+        <button type="button" id="cancel-modify-btn" class="secondary-btn">キャンセル</button>
+        <button type="button" id="submit-modify-btn" class="primary-btn">この指示で修正</button>
+      </div>
+    </div>
+    <p class="note" id="structure-regen-note">章立て再生成は3回・部分修正は3回まで使えます。</p>
   </section>
 
   <section id="progress-section" class="hidden">
@@ -148,7 +178,7 @@
 </main>
 
 <footer>
-  <p>Book Maker v3 ── 2段階UX（タイトル10選→本編）／ 章立て H1=4〜5・H2=2〜3 ／ Kindle KDP 入稿対応</p>
+  <p>Book Maker v1.1 ── 3段階UX（タイトル10選→章立てレビュー→本編）／ 章立て H1=4〜5・H2=2〜3 ／ Kindle KDP 入稿対応</p>
 </footer>
 
 <script src="/static/app.js"></script>

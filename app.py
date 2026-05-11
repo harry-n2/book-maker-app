@@ -1,4 +1,4 @@
-"""Book Maker App ── 2段階UX（タイトル10選 → 構造 → 本編）。"""
+"""Book Maker App ── 3段階UX（タイトル10選 → 章立てレビュー → 本編）。"""
 
 from __future__ import annotations
 
@@ -15,7 +15,15 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from generator import BookConfig, continue_book_job, start_titles_job
+from generator import (
+    BookConfig,
+    generate_structure_bestseller,
+    generate_structure_for_review,
+    modify_structure,
+    regenerate_titles_bestseller,
+    start_titles_job,
+    start_writing,
+)
 from references import (
     Reference,
     analyze_image,
@@ -30,7 +38,7 @@ JOBS = _resource.jobs_dir()
 TEMPLATES = _resource.resource("templates")
 STATIC = _resource.resource("static")
 
-app = FastAPI(title="Book Maker", description="2段階UX 書籍生成アプリ")
+app = FastAPI(title="Book Maker", description="3段階UX 書籍生成アプリ")
 app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
 
 JOB_STATE: dict[str, dict] = {}
@@ -39,6 +47,7 @@ ALLOWED_FILE_EXT = {".pdf", ".docx", ".md", ".markdown", ".txt", ".csv", ".json"
 ALLOWED_IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 MAX_FILE_BYTES = 20 * 1024 * 1024
 MAX_FILES_PER_KIND = 10
+MAX_REGEN_PER_STAGE = 3
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -115,8 +124,19 @@ def _collect_references(
     return refs
 
 
+def _cfg_from_state(state: dict) -> BookConfig:
+    cfg_data = state.get("cfg") or {}
+    return BookConfig(
+        theme=cfg_data.get("theme", ""),
+        target_layer=cfg_data.get("target_layer", ""),
+        author=cfg_data.get("author", ""),
+        api_key=cfg_data.get("api_key", ""),
+        references=cfg_data.get("references", []),
+    )
+
+
 # ---------------------------------------------------------------------------
-# Step 1: タイトル10選を生成（同期処理・約30〜45秒で返す）
+# Step 1: タイトル10選を生成（同期・30〜45秒）
 # ---------------------------------------------------------------------------
 
 
@@ -188,16 +208,68 @@ async def generate_titles_endpoint(
             "references": cfg.references,
         },
         "reference_count": len(references),
+        "titles_regen_count": 0,
+        "structure_regen_count": 0,
+        "structure_modify_count": 0,
+        "current_structure": None,
+        "adopted_index": None,
     }
     return {
         "job_id": job_id,
         "candidates": candidates,
         "reference_count": len(references),
+        "titles_regen_count": 0,
+        "max_regen_per_stage": MAX_REGEN_PER_STAGE,
     }
 
 
 # ---------------------------------------------------------------------------
-# Step 2: タイトル確定 → 本編生成（バックグラウンド）
+# Step 1-b: タイトル10選を「ベストセラー版」で再生成
+# ---------------------------------------------------------------------------
+
+
+@app.post("/regenerate-titles/{job_id}")
+async def regenerate_titles_endpoint(job_id: str):
+    state = JOB_STATE.get(job_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません。最初からやり直してください。")
+    if state.get("status") != "title_picked":
+        raise HTTPException(
+            status_code=409,
+            detail=f"現在のステータス（{state.get('status')}）からはタイトル再生成できません。",
+        )
+    if state.get("titles_regen_count", 0) >= MAX_REGEN_PER_STAGE:
+        raise HTTPException(
+            status_code=429,
+            detail=f"タイトル再生成は {MAX_REGEN_PER_STAGE} 回までです。1つ選んで先に進んでください。",
+        )
+
+    cfg = _cfg_from_state(state)
+    prev_candidates = state.get("candidates", [])
+    try:
+        new_candidates = regenerate_titles_bestseller(cfg, prev_candidates)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"タイトル再生成に失敗しました：{exc}")
+
+    state["candidates"] = new_candidates
+    state["titles_regen_count"] = state.get("titles_regen_count", 0) + 1
+    state["message"] = "ベストセラー版で再生成しました。お好きな1案をお選びください。"
+
+    job_dir = JOBS / job_id
+    (job_dir / "title_candidates.json").write_text(
+        json.dumps(new_candidates, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+    return {
+        "job_id": job_id,
+        "candidates": new_candidates,
+        "titles_regen_count": state["titles_regen_count"],
+        "max_regen_per_stage": MAX_REGEN_PER_STAGE,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Step 2: タイトル確定 → 章立て生成（非同期・ユーザー確認待ち）
 # ---------------------------------------------------------------------------
 
 
@@ -206,20 +278,197 @@ async def confirm_title_endpoint(job_id: str, adopted_index: int = Form(...)):
     state = JOB_STATE.get(job_id)
     if not state:
         raise HTTPException(status_code=404, detail="ジョブが見つかりません。最初からやり直してください。")
+    if state.get("status") != "title_picked":
+        raise HTTPException(
+            status_code=409,
+            detail=f"現在のステータス（{state.get('status')}）からは章立て生成に進めません。",
+        )
     candidates = state.get("candidates") or []
     if not 0 <= adopted_index < len(candidates):
         raise HTTPException(status_code=400, detail="採用 index が範囲外です。")
 
-    cfg_data = state.get("cfg") or {}
-    cfg = BookConfig(
-        theme=cfg_data.get("theme", ""),
-        target_layer=cfg_data.get("target_layer", ""),
-        author=cfg_data.get("author", ""),
-        api_key=cfg_data.get("api_key", ""),
-        references=cfg_data.get("references", []),
-    )
+    state["adopted_index"] = adopted_index
+    state["status"] = "generating_structure"
+    state["progress"] = 10
+    state["message"] = "章立て（章構成）を生成中..."
+
+    cfg = _cfg_from_state(state)
     job_dir = JOBS / job_id
-    state.update({"status": "running", "progress": 5, "message": "構造の生成を開始します..."})
+
+    def runner() -> None:
+        try:
+            structure = generate_structure_for_review(cfg, job_dir, candidates, adopted_index)
+            JOB_STATE[job_id].update({
+                "status": "structure_review",
+                "progress": 0,
+                "message": "章立てが整いました。確認してください。",
+                "current_structure": structure,
+            })
+        except Exception as exc:  # noqa: BLE001
+            JOB_STATE[job_id].update({
+                "status": "error",
+                "message": f"章立て生成に失敗しました：{exc}",
+                "trace": traceback.format_exc(),
+            })
+
+    threading.Thread(target=runner, daemon=True).start()
+    return {"job_id": job_id, "adopted_index": adopted_index}
+
+
+# ---------------------------------------------------------------------------
+# Step 2-b: 章立てをベストセラー版で再生成（非同期）
+# ---------------------------------------------------------------------------
+
+
+@app.post("/regenerate-structure/{job_id}")
+async def regenerate_structure_endpoint(job_id: str):
+    state = JOB_STATE.get(job_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません。")
+    if state.get("status") != "structure_review":
+        raise HTTPException(
+            status_code=409,
+            detail=f"現在のステータス（{state.get('status')}）からは章立て再生成できません。",
+        )
+    if state.get("structure_regen_count", 0) >= MAX_REGEN_PER_STAGE:
+        raise HTTPException(
+            status_code=429,
+            detail=f"章立て再生成は {MAX_REGEN_PER_STAGE} 回までです。承認して本編に進んでください。",
+        )
+
+    candidates = state.get("candidates") or []
+    adopted_index = state.get("adopted_index")
+    if adopted_index is None or not 0 <= adopted_index < len(candidates):
+        raise HTTPException(status_code=400, detail="採用タイトルが特定できません。")
+    adopted = candidates[adopted_index]
+    adopted_title = adopted.get("title", "")
+    adopted_subtitle = adopted.get("subtitle", "")
+    prev_structure = state.get("current_structure") or {}
+
+    cfg = _cfg_from_state(state)
+    job_dir = JOBS / job_id
+
+    state["status"] = "regenerating_structure"
+    state["message"] = "ベストセラー強化版の章立てを生成中..."
+
+    def runner() -> None:
+        try:
+            new_structure = generate_structure_bestseller(cfg, adopted_title, adopted_subtitle, prev_structure)
+            (job_dir / "structure.json").write_text(
+                json.dumps(new_structure, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            JOB_STATE[job_id].update({
+                "status": "structure_review",
+                "message": "ベストセラー版で章立てを再生成しました。確認してください。",
+                "current_structure": new_structure,
+                "structure_regen_count": JOB_STATE[job_id].get("structure_regen_count", 0) + 1,
+            })
+        except Exception as exc:  # noqa: BLE001
+            JOB_STATE[job_id].update({
+                "status": "structure_review",
+                "message": f"章立て再生成に失敗しました：{exc}（前回の章立てを保持しています）",
+                "trace": traceback.format_exc(),
+            })
+
+    threading.Thread(target=runner, daemon=True).start()
+    return {
+        "job_id": job_id,
+        "structure_regen_count": state.get("structure_regen_count", 0) + 1,
+        "max_regen_per_stage": MAX_REGEN_PER_STAGE,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Step 2-c: 章立ての部分修正（非同期）
+# ---------------------------------------------------------------------------
+
+
+@app.post("/modify-structure/{job_id}")
+async def modify_structure_endpoint(job_id: str, user_instruction: str = Form(...)):
+    state = JOB_STATE.get(job_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません。")
+    if state.get("status") != "structure_review":
+        raise HTTPException(
+            status_code=409,
+            detail=f"現在のステータス（{state.get('status')}）からは部分修正できません。",
+        )
+    if state.get("structure_modify_count", 0) >= MAX_REGEN_PER_STAGE:
+        raise HTTPException(
+            status_code=429,
+            detail=f"部分修正は {MAX_REGEN_PER_STAGE} 回までです。承認して本編に進んでください。",
+        )
+    if not user_instruction or not user_instruction.strip():
+        raise HTTPException(status_code=400, detail="修正指示が空です。")
+
+    candidates = state.get("candidates") or []
+    adopted_index = state.get("adopted_index")
+    if adopted_index is None or not 0 <= adopted_index < len(candidates):
+        raise HTTPException(status_code=400, detail="採用タイトルが特定できません。")
+    adopted = candidates[adopted_index]
+    adopted_title = adopted.get("title", "")
+    adopted_subtitle = adopted.get("subtitle", "")
+    current_structure = state.get("current_structure") or {}
+
+    cfg = _cfg_from_state(state)
+    job_dir = JOBS / job_id
+
+    state["status"] = "modifying_structure"
+    state["message"] = "章立てを部分修正中..."
+
+    def runner() -> None:
+        try:
+            new_structure = modify_structure(cfg, current_structure, user_instruction, adopted_title, adopted_subtitle)
+            (job_dir / "structure.json").write_text(
+                json.dumps(new_structure, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            JOB_STATE[job_id].update({
+                "status": "structure_review",
+                "message": "章立てを修正しました。確認してください。",
+                "current_structure": new_structure,
+                "structure_modify_count": JOB_STATE[job_id].get("structure_modify_count", 0) + 1,
+            })
+        except Exception as exc:  # noqa: BLE001
+            JOB_STATE[job_id].update({
+                "status": "structure_review",
+                "message": f"部分修正に失敗しました：{exc}（前回の章立てを保持しています）",
+                "trace": traceback.format_exc(),
+            })
+
+    threading.Thread(target=runner, daemon=True).start()
+    return {
+        "job_id": job_id,
+        "structure_modify_count": state.get("structure_modify_count", 0) + 1,
+        "max_regen_per_stage": MAX_REGEN_PER_STAGE,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Step 3: 章立て承認 → 本編生成（バックグラウンド）
+# ---------------------------------------------------------------------------
+
+
+@app.post("/approve-structure/{job_id}")
+async def approve_structure_endpoint(job_id: str):
+    state = JOB_STATE.get(job_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません。")
+    if state.get("status") != "structure_review":
+        raise HTTPException(
+            status_code=409,
+            detail=f"現在のステータス（{state.get('status')}）からは本編生成に進めません。章立てレビュー画面から承認してください。",
+        )
+    structure = state.get("current_structure")
+    if not structure:
+        raise HTTPException(status_code=400, detail="章立てが未生成です。")
+    candidates = state.get("candidates") or []
+    adopted_index = state.get("adopted_index")
+    if adopted_index is None or not 0 <= adopted_index < len(candidates):
+        raise HTTPException(status_code=400, detail="採用タイトルが特定できません。")
+
+    cfg = _cfg_from_state(state)
+    job_dir = JOBS / job_id
+    state.update({"status": "running", "progress": 12, "message": "本編の執筆を開始します..."})
 
     def runner() -> None:
         try:
@@ -227,7 +476,7 @@ async def confirm_title_endpoint(job_id: str, adopted_index: int = Form(...)):
                 JOB_STATE[job_id]["progress"] = pct
                 JOB_STATE[job_id]["message"] = msg
 
-            result = continue_book_job(cfg, job_dir, candidates, adopted_index, progress)
+            result = start_writing(cfg, job_dir, structure, candidates, adopted_index, progress)
             result["reference_count"] = state.get("reference_count", 0)
             JOB_STATE[job_id].update({
                 "status": "done",
@@ -243,7 +492,12 @@ async def confirm_title_endpoint(job_id: str, adopted_index: int = Form(...)):
             })
 
     threading.Thread(target=runner, daemon=True).start()
-    return {"job_id": job_id, "adopted_index": adopted_index}
+    return {"job_id": job_id}
+
+
+# ---------------------------------------------------------------------------
+# Status / Download
+# ---------------------------------------------------------------------------
 
 
 @app.get("/status/{job_id}")
@@ -257,9 +511,16 @@ async def status(job_id: str) -> JSONResponse:
         "message": state.get("message", ""),
         "project_id": state.get("project_id"),
         "project_name": state.get("project_name"),
+        "titles_regen_count": state.get("titles_regen_count", 0),
+        "structure_regen_count": state.get("structure_regen_count", 0),
+        "structure_modify_count": state.get("structure_modify_count", 0),
+        "max_regen_per_stage": MAX_REGEN_PER_STAGE,
+        "adopted_index": state.get("adopted_index"),
     }
-    if state["status"] == "title_picked":
+    if state["status"] in ("title_picked", "generating_structure", "structure_review", "regenerating_structure", "modifying_structure", "running"):
         payload["candidates"] = state.get("candidates", [])
+    if state["status"] in ("structure_review", "regenerating_structure", "modifying_structure", "running"):
+        payload["structure"] = state.get("current_structure")
     if state["status"] == "done":
         payload["result"] = state["result"]
     if state["status"] == "error":

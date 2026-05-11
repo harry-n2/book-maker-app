@@ -308,13 +308,135 @@ def start_titles_job(cfg: BookConfig, job_dir: Path) -> list[dict]:
     return cands
 
 
-def continue_book_job(
+def regenerate_titles_bestseller(cfg: BookConfig, prev_candidates: list[dict]) -> list[dict]:
+    """ベストセラー強化版タイトル10選を再生成。前回案を渡して差別化を強制する。"""
+    prompt = _load_prompt(
+        "titles_bestseller.txt",
+        theme=cfg.theme,
+        target_layer=cfg.target_layer,
+        author=cfg.author,
+        previous_candidates_json=json.dumps(prev_candidates, ensure_ascii=False, indent=2),
+    )
+    refs = _references_block(cfg)
+    if refs:
+        prompt = refs + "\n\n" + prompt
+    raw = _strip_codefence(_call_gemini(cfg.api_key, cfg.model, prompt))
+    data = json.loads(raw)
+    cands = data.get("candidates", [])
+    if not isinstance(cands, list) or len(cands) == 0:
+        raise RuntimeError("Title regeneration returned empty candidates")
+    for i, c in enumerate(cands, 1):
+        c["rank"] = c.get("rank", i)
+    return cands[:10]
+
+
+def generate_structure_bestseller(
+    cfg: BookConfig,
+    adopted_title: str,
+    adopted_subtitle: str,
+    prev_structure: dict,
+) -> dict:
+    """ベストセラー強化版章立てを再生成。前回構造を渡して差別化を強制する。"""
+    base_prompt = _load_prompt(
+        "structure_bestseller.txt",
+        adopted_title=adopted_title,
+        adopted_subtitle=adopted_subtitle,
+        theme=cfg.theme,
+        target_layer=cfg.target_layer,
+        author=cfg.author,
+        previous_structure_json=json.dumps(prev_structure, ensure_ascii=False, indent=2),
+    )
+    refs = _references_block(cfg)
+    if refs:
+        base_prompt = refs + "\n\n" + base_prompt
+    last_err = ""
+    prompt = base_prompt
+    for _ in range(3):
+        raw = _strip_codefence(_call_gemini(cfg.api_key, cfg.model, prompt))
+        try:
+            structure = json.loads(raw)
+        except Exception as exc:  # noqa: BLE001
+            last_err = f"JSON parse failed: {exc}"
+            continue
+        ok, msg = _validate_structure(structure)
+        if ok:
+            return structure
+        last_err = msg
+        prompt = (
+            base_prompt
+            + f"\n\n【前回の出力でルール違反: {msg}】"
+            + "\n指摘事項を解消した正しい JSON だけを返してください。"
+        )
+    raise RuntimeError(f"Bestseller structure validation failed: {last_err}")
+
+
+def modify_structure(
+    cfg: BookConfig,
+    current_structure: dict,
+    user_instruction: str,
+    adopted_title: str,
+    adopted_subtitle: str,
+) -> dict:
+    """ユーザーの自由記述指示で章立てを部分修正する。"""
+    base_prompt = _load_prompt(
+        "structure_modify.txt",
+        adopted_title=adopted_title,
+        adopted_subtitle=adopted_subtitle,
+        theme=cfg.theme,
+        target_layer=cfg.target_layer,
+        author=cfg.author,
+        current_structure_json=json.dumps(current_structure, ensure_ascii=False, indent=2),
+        user_instruction=user_instruction.strip(),
+    )
+    last_err = ""
+    prompt = base_prompt
+    for _ in range(3):
+        raw = _strip_codefence(_call_gemini(cfg.api_key, cfg.model, prompt))
+        try:
+            structure = json.loads(raw)
+        except Exception as exc:  # noqa: BLE001
+            last_err = f"JSON parse failed: {exc}"
+            continue
+        ok, msg = _validate_structure(structure)
+        if ok:
+            return structure
+        last_err = msg
+        prompt = (
+            base_prompt
+            + f"\n\n【前回の出力でルール違反: {msg}】"
+            + "\n指摘事項を解消した正しい JSON だけを返してください。"
+        )
+    raise RuntimeError(f"Structure modification validation failed: {last_err}")
+
+
+def generate_structure_for_review(
     cfg: BookConfig,
     job_dir: Path,
     candidates: list[dict],
     adopted_index: int,
+) -> dict:
+    """採用タイトルから章立てを生成し structure.json に保存。本編は生成しない。"""
+    if not 0 <= adopted_index < len(candidates):
+        raise ValueError(f"adopted_index out of range: {adopted_index}")
+    adopted = candidates[adopted_index]
+    title = adopted.get("title", "")
+    subtitle = adopted.get("subtitle", "")
+    structure = generate_structure(cfg, title, subtitle)
+    (job_dir / "structure.json").write_text(
+        json.dumps(structure, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    return structure
+
+
+def start_writing(
+    cfg: BookConfig,
+    job_dir: Path,
+    structure: dict,
+    candidates: list[dict],
+    adopted_index: int,
     progress_cb: Callable[[str, int], None],
 ) -> dict:
+    """ユーザー承認済み章立てから本編を書き出す。structure は外部から受け取る。"""
     if not 0 <= adopted_index < len(candidates):
         raise ValueError(f"adopted_index out of range: {adopted_index}")
 
@@ -325,8 +447,6 @@ def continue_book_job(
     title_md = render_title_candidates_md(candidates, adopted_index)
     (job_dir / "title_candidates.md").write_text(title_md, encoding="utf-8")
 
-    progress_cb("構造（H1/H2/H3）を構築中...", 8)
-    structure = generate_structure(cfg, title, subtitle)
     (job_dir / "structure.json").write_text(
         json.dumps(structure, ensure_ascii=False, indent=2), encoding="utf-8"
     )
