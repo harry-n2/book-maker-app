@@ -3,6 +3,12 @@
 
   const $ = (id) => document.getElementById(id);
   const formSection = $("form-section");
+  const referencesReviewSection = $("references-review-section");
+  const referencesList = $("references-list");
+  const referencesWarningBanner = $("references-warning-banner");
+  const referencesSummary = $("references-summary");
+  const backToFormBtn = $("back-to-form-btn");
+  const confirmReferencesBtn = $("confirm-references-btn");
   const titlePickSection = $("title-pick-section");
   const structureGeneratingSection = $("structure-generating-section");
   const structureReviewSection = $("structure-review-section");
@@ -64,6 +70,7 @@
   function hide(el) { if (el) el.classList.add("hidden"); }
   function hideAllSections() {
     hide(formSection);
+    hide(referencesReviewSection);
     hide(titlePickSection);
     hide(structureGeneratingSection);
     hide(structureReviewSection);
@@ -90,7 +97,7 @@
     structureRegenCount = 0;
     structureModifyCount = 0;
     submitBtn.disabled = false;
-    submitBtn.textContent = "タイトル候補10選を作る";
+    submitBtn.textContent = "参照素材を取り込んで次へ →";
     setProgress(0, "準備中…");
     hideAllSections();
     show(formSection);
@@ -141,6 +148,12 @@
     $("theme").value = p.theme || "";
     $("target_layer").value = p.target_layer || $("target_layer").value;
     $("author").value = p.author || "";
+    $("profile_name").value = p.profile_name || "";
+    $("profile_author_bio").value = p.profile_author_bio || "";
+    $("profile_tone").value = p.profile_tone || "";
+    $("profile_target_keywords").value = p.profile_target_keywords || "";
+    $("profile_failure_bank").value = p.profile_failure_bank || "";
+    $("profile_voice_types").value = p.profile_voice_types || "";
     $("ref_urls").value = p.ref_urls || "";
     $("notebooklm_urls").value = p.notebooklm_urls || "";
     renderProjects();
@@ -154,6 +167,12 @@
   function newProject() {
     currentProjectId = null;
     $("theme").value = "";
+    $("profile_name").value = "";
+    $("profile_author_bio").value = "";
+    $("profile_tone").value = "";
+    $("profile_target_keywords").value = "";
+    $("profile_failure_bank").value = "";
+    $("profile_voice_types").value = "";
     $("ref_urls").value = "";
     $("notebooklm_urls").value = "";
     $("files").value = "";
@@ -194,6 +213,53 @@
   }
   bindFileList("files", "file-list", "file-counter", "ファイル");
   bindFileList("images", "image-list", "image-counter", "画像");
+
+  // -------------------------------------------------------------------
+  // 参照素材プレビュー 描画
+  // -------------------------------------------------------------------
+  function renderReferences(refs) {
+    referencesList.innerHTML = "";
+    if (!refs || refs.length === 0) {
+      referencesList.innerHTML = '<p class="note">参照素材は登録されていません。素材なしで進めると著者ハリーの定型本になります。</p>';
+      return;
+    }
+    for (const r of refs) {
+      const hasWarn = !!r.warning;
+      const item = document.createElement("div");
+      item.className = "ref-item" + (hasWarn ? " has-warning" : " ok");
+      const label = (r.label || "").slice(0, 80) + ((r.label || "").length > 80 ? "..." : "");
+      const lenStr = (r.char_count || 0).toLocaleString();
+      const preview = (r.preview || "").trim();
+      item.innerHTML = `
+        <div class="ref-item-head">
+          <span class="ref-item-kind kind-${escapeHtml(r.kind || "")}">${escapeHtml(r.kind || "")}</span>
+          <span class="ref-item-label" title="${escapeHtml(r.label || "")}">${escapeHtml(label)}</span>
+          <span class="ref-item-len ${hasWarn ? "len-bad" : "len-ok"}">${lenStr} 字</span>
+        </div>
+        ${hasWarn ? `<div class="ref-item-warning">⚠ ${escapeHtml(r.warning)}</div>` : ""}
+        ${preview ? `<div class="ref-item-preview">${escapeHtml(preview)}${preview.length >= 200 ? "..." : ""}</div>` : ""}
+      `;
+      referencesList.appendChild(item);
+    }
+  }
+  function renderReferencesReview(data) {
+    renderReferences(data.references || []);
+    const cnt = data.reference_count || 0;
+    const warn = !!data.has_warning;
+    referencesSummary.textContent =
+      cnt === 0
+        ? "参照素材なし。素材を追加することを強く推奨します。"
+        : warn
+        ? `参照素材 ${cnt} 件を取り込みました。⚠ 警告のあるソースがあります。`
+        : `参照素材 ${cnt} 件を取り込みました。すべて正常に取得できています。`;
+    if (warn) {
+      show(referencesWarningBanner);
+    } else {
+      hide(referencesWarningBanner);
+    }
+    hideAllSections();
+    show(referencesReviewSection);
+  }
 
   // -------------------------------------------------------------------
   // タイトル候補10選 描画
@@ -462,6 +528,13 @@
       project_name: $("theme").value.trim().slice(0, 30),
       ref_urls: $("ref_urls").value.trim(),
       notebooklm_urls: $("notebooklm_urls").value.trim(),
+      pasted_text: $("pasted_text").value.trim(),
+      profile_name: $("profile_name").value.trim(),
+      profile_author_bio: $("profile_author_bio").value.trim(),
+      profile_tone: $("profile_tone").value.trim(),
+      profile_target_keywords: $("profile_target_keywords").value.trim(),
+      profile_failure_bank: $("profile_failure_bank").value.trim(),
+      profile_voice_types: $("profile_voice_types").value.trim(),
     };
     if (!payload.theme || !payload.author || !payload.api_key) {
       alert("未入力の項目があります（テーマ・著者名・API キー）");
@@ -478,14 +551,14 @@
     sessionStorage.setItem(API_KEY_STORE, payload.api_key);
 
     submitBtn.disabled = true;
-    submitBtn.textContent = "タイトル候補を生成中…";
+    submitBtn.textContent = "参照素材を取り込み中…";
 
     try {
       const data = await startTitleGeneration(payload);
       currentJobId = data.job_id;
-      currentCandidates = data.candidates;
+      currentCandidates = [];
       currentProjectId = projectId;
-      titlesRegenCount = data.titles_regen_count || 0;
+      titlesRegenCount = 0;
       maxRegenPerStage = data.max_regen_per_stage || 3;
       structureRegenCount = 0;
       structureModifyCount = 0;
@@ -495,24 +568,23 @@
         theme: payload.theme,
         target_layer: payload.target_layer,
         author: payload.author,
+        profile_name: payload.profile_name,
+        profile_author_bio: payload.profile_author_bio,
+        profile_tone: payload.profile_tone,
+        profile_target_keywords: payload.profile_target_keywords,
+        profile_failure_bank: payload.profile_failure_bank,
+        profile_voice_types: payload.profile_voice_types,
         ref_urls: payload.ref_urls,
         notebooklm_urls: payload.notebooklm_urls,
         last_job_id: data.job_id,
-        candidates: data.candidates,
         created_at: new Date().toISOString(),
       });
-      renderTitleCandidates(data.candidates);
-      titlePickSummary.textContent = data.reference_count
-        ? `参照ソース ${data.reference_count} 件を取り込みました。お好きな1案をお選びください。`
-        : `候補が ${data.candidates.length} 件揃いました。お好きな1案をお選びください。`;
-      updateTitlesRegenNote();
-      hideAllSections();
-      show(titlePickSection);
+      renderReferencesReview(data);
     } catch (err) {
       showError(err.message || "送信に失敗しました。");
     } finally {
       submitBtn.disabled = false;
-      submitBtn.textContent = "タイトル候補10選を作る";
+      submitBtn.textContent = "参照素材を取り込んで次へ →";
     }
   });
 
@@ -563,6 +635,49 @@
   backBtn.addEventListener("click", () => {
     hideAllSections();
     show(formSection);
+  });
+
+  // -------------------------------------------------------------------
+  // 参照素材プレビュー：戻る / 進む
+  // -------------------------------------------------------------------
+  backToFormBtn.addEventListener("click", () => {
+    hideAllSections();
+    show(formSection);
+  });
+
+  confirmReferencesBtn.addEventListener("click", async () => {
+    if (!currentJobId) return;
+    confirmReferencesBtn.disabled = true;
+    confirmReferencesBtn.textContent = "タイトル10選を生成中…（30〜60秒）";
+    try {
+      const res = await fetch(`/confirm-references/${currentJobId}`, { method: "POST", body: new FormData() });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "送信に失敗しました" }));
+        throw new Error(err.detail || "送信に失敗しました");
+      }
+      const data = await res.json();
+      currentCandidates = data.candidates || [];
+      titlesRegenCount = data.titles_regen_count || 0;
+      maxRegenPerStage = data.max_regen_per_stage || 3;
+      const projects = loadProjects();
+      const me = projects.find((p) => p.id === currentProjectId);
+      if (me) {
+        me.candidates = data.candidates;
+        saveProjects(projects);
+      }
+      renderTitleCandidates(data.candidates || []);
+      titlePickSummary.textContent = data.reference_count
+        ? `参照ソース ${data.reference_count} 件を取り込んだ上で候補が ${(data.candidates || []).length} 件揃いました。`
+        : `候補が ${(data.candidates || []).length} 件揃いました。お好きな1案をお選びください。`;
+      updateTitlesRegenNote();
+      hideAllSections();
+      show(titlePickSection);
+    } catch (err) {
+      showError(err.message || "送信に失敗しました。");
+    } finally {
+      confirmReferencesBtn.disabled = false;
+      confirmReferencesBtn.textContent = "この素材でタイトル10選を作成 →";
+    }
   });
 
   // -------------------------------------------------------------------

@@ -369,6 +369,99 @@ footer {
 }
 .secondary-btn:hover { background: #666; }
 
+/* 参照素材プレビュー画面 */
+.references-list {
+  margin: 16px 0 20px;
+  display: grid;
+  gap: 10px;
+}
+.ref-item {
+  background: #fafbfd;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--success);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.ref-item.has-warning {
+  border-left-color: var(--error);
+  background: #fff8f8;
+}
+.ref-item-head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+.ref-item-kind {
+  display: inline-block;
+  background: var(--primary);
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+}
+.ref-item-kind.kind-pasted { background: #5c2db8; }
+.ref-item-kind.kind-file   { background: #1e9b62; }
+.ref-item-kind.kind-image  { background: #d97706; }
+.ref-item-kind.kind-notebooklm { background: #6b21a8; }
+.ref-item-label {
+  flex: 1;
+  min-width: 200px;
+  font-size: 12.5px;
+  color: #2a3340;
+  word-break: break-all;
+}
+.ref-item-len {
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+.len-ok  { background: #e6f7ee; color: #0a7a3c; }
+.len-bad { background: #ffe1e1; color: #a30000; }
+.ref-item-warning {
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: #fff3cd;
+  border-left: 3px solid #d97706;
+  font-size: 12.5px;
+  color: #6b3700;
+  border-radius: 4px;
+}
+.ref-item-preview {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: white;
+  border: 1px dashed var(--border);
+  font-size: 12px;
+  color: #555;
+  border-radius: 4px;
+  font-family: "Hiragino Sans", "Yu Gothic UI", monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 6.5em;
+  overflow: hidden;
+  line-height: 1.5;
+}
+.references-warning-banner {
+  background: #fff3cd;
+  border: 1px solid #d97706;
+  color: #6b3700;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin: 12px 0;
+  font-size: 13px;
+}
+.references-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+}
+.references-actions button { flex: 1; }
+
 /* 章立てレビュー画面 */
 .structure-title-banner {
   background: #eaf0ff;
@@ -539,4 +632,7 @@ footer {
   h2 { font-size: 19px; }
   #project-sidebar { padding: 16px; max-height: 200px; }
   .title-pick-actions { flex-direction: column; }
+}
+.structure-chapter-meta {
+  display: none;
 }

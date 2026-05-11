@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import threading
 import traceback
@@ -29,6 +30,7 @@ from references import (
     analyze_image,
     extract_file,
     fetch_notebooklm,
+    fetch_pasted_text,
     fetch_url,
 )
 import _resource
@@ -73,6 +75,7 @@ def _collect_references(
     files: list[UploadFile],
     images: list[UploadFile],
     notebooklm_urls: list[str],
+    pasted_texts: list[str] | None = None,
 ) -> list[Reference]:
     file_count = sum(1 for f in (files or []) if f and f.filename)
     image_count = sum(1 for f in (images or []) if f and f.filename)
@@ -100,6 +103,10 @@ def _collect_references(
         nb = (nb or "").strip()
         if nb:
             refs.append(fetch_notebooklm(nb))
+
+    for i, pt in enumerate(pasted_texts or [], 1):
+        if pt and pt.strip():
+            refs.append(fetch_pasted_text(pt, label=f"直貼りテキスト {i}"))
 
     for f in files:
         if not f or not f.filename:
@@ -132,12 +139,36 @@ def _cfg_from_state(state: dict) -> BookConfig:
         author=cfg_data.get("author", ""),
         api_key=cfg_data.get("api_key", ""),
         references=cfg_data.get("references", []),
+        profile_name=cfg_data.get("profile_name", ""),
+        profile_author_bio=cfg_data.get("profile_author_bio", ""),
+        profile_tone=cfg_data.get("profile_tone", ""),
+        profile_target_keywords=cfg_data.get("profile_target_keywords", []),
+        profile_failure_bank=cfg_data.get("profile_failure_bank", []),
+        profile_voice_types=cfg_data.get("profile_voice_types", []),
     )
 
 
 # ---------------------------------------------------------------------------
 # Step 1: タイトル10選を生成（同期・30〜45秒）
 # ---------------------------------------------------------------------------
+
+
+def _refs_payload(refs: list[Reference]) -> list[dict]:
+    """フロントに返す参照ソース概要（label/kind/char_count/warning）。"""
+    return [
+        {
+            "label": r["label"],
+            "kind": r["kind"],
+            "char_count": len(r.get("content", "") or ""),
+            "warning": r.get("warning"),
+            "preview": (r.get("content", "") or "").strip()[:200],
+        }
+        for r in refs
+    ]
+
+
+def _split_profile_lines(value: str) -> list[str]:
+    return [line.strip() for line in (value or "").splitlines() if line.strip()]
 
 
 @app.post("/generate-titles")
@@ -150,9 +181,21 @@ async def generate_titles_endpoint(
     project_name: str = Form(""),
     ref_urls: str = Form(""),
     notebooklm_urls: str = Form(""),
+    pasted_text: str = Form(""),
+    profile_name: str = Form(""),
+    profile_author_bio: str = Form(""),
+    profile_tone: str = Form(""),
+    profile_target_keywords: str = Form(""),
+    profile_failure_bank: str = Form(""),
+    profile_voice_types: str = Form(""),
     files: list[UploadFile] = File(default=[]),
     images: list[UploadFile] = File(default=[]),
 ):
+    """v1.2: 参照素材の取り込みだけ実行し、タイトル生成は /confirm-references で行う。
+
+    取り込み結果（warning 含む）をフロントに返し、ユーザーがプレビュー画面で確認・了承
+    してからタイトル生成に進ませる（短すぎ・取得失敗を見逃さない設計）。
+    """
     if not theme.strip() or not author.strip() or not api_key.strip():
         raise HTTPException(status_code=400, detail="未入力の項目があります。")
 
@@ -162,6 +205,14 @@ async def generate_titles_endpoint(
 
     url_list = [line.strip() for line in (ref_urls or "").splitlines() if line.strip()]
     nb_list = [line.strip() for line in (notebooklm_urls or "").splitlines() if line.strip()]
+    # 直貼りテキストは「---」で複数ソース区切り（先頭の --- は除外）
+    pasted_list: list[str] = []
+    if pasted_text and pasted_text.strip():
+        chunks = re.split(r"(?m)^---+\s*$", pasted_text)
+        for ch in chunks:
+            s = ch.strip()
+            if s:
+                pasted_list.append(s)
 
     references = _collect_references(
         job_dir=job_dir,
@@ -170,10 +221,19 @@ async def generate_titles_endpoint(
         files=files or [],
         images=images or [],
         notebooklm_urls=nb_list,
+        pasted_texts=pasted_list,
     )
     (job_dir / "references_index.json").write_text(
         json.dumps(
-            [{"label": r["label"], "kind": r["kind"], "char_count": len(r["content"])} for r in references],
+            [
+                {
+                    "label": r["label"],
+                    "kind": r["kind"],
+                    "char_count": len(r.get("content", "") or ""),
+                    "warning": r.get("warning"),
+                }
+                for r in references
+            ],
             ensure_ascii=False,
             indent=2,
         ),
@@ -186,28 +246,38 @@ async def generate_titles_endpoint(
         author=author.strip(),
         api_key=api_key.strip(),
         references=references,
+        profile_name=profile_name.strip() or author.strip(),
+        profile_author_bio=profile_author_bio.strip(),
+        profile_tone=profile_tone.strip(),
+        profile_target_keywords=_split_profile_lines(profile_target_keywords),
+        profile_failure_bank=_split_profile_lines(profile_failure_bank),
+        profile_voice_types=_split_profile_lines(profile_voice_types),
     )
 
-    try:
-        candidates = start_titles_job(cfg, job_dir)
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"タイトル生成に失敗しました：{exc}")
-
+    has_warning = any(r.get("warning") for r in references)
     JOB_STATE[job_id] = {
-        "status": "title_picked",
+        "status": "references_review",
         "progress": 0,
-        "message": "タイトルを選んでください。",
+        "message": "参照素材の取り込みが完了しました。確認してください。",
         "project_id": project_id.strip() or job_id,
         "project_name": project_name.strip() or theme[:30],
-        "candidates": candidates,
+        "candidates": [],
         "cfg": {
             "theme": cfg.theme,
             "target_layer": cfg.target_layer,
             "author": cfg.author,
             "api_key": cfg.api_key,
             "references": cfg.references,
+            "profile_name": cfg.profile_name,
+            "profile_author_bio": cfg.profile_author_bio,
+            "profile_tone": cfg.profile_tone,
+            "profile_target_keywords": cfg.profile_target_keywords,
+            "profile_failure_bank": cfg.profile_failure_bank,
+            "profile_voice_types": cfg.profile_voice_types,
         },
         "reference_count": len(references),
+        "references_payload": _refs_payload(references),
+        "references_has_warning": has_warning,
         "titles_regen_count": 0,
         "structure_regen_count": 0,
         "structure_modify_count": 0,
@@ -216,9 +286,43 @@ async def generate_titles_endpoint(
     }
     return {
         "job_id": job_id,
-        "candidates": candidates,
+        "status": "references_review",
+        "references": _refs_payload(references),
         "reference_count": len(references),
-        "titles_regen_count": 0,
+        "has_warning": has_warning,
+        "max_regen_per_stage": MAX_REGEN_PER_STAGE,
+    }
+
+
+@app.post("/confirm-references/{job_id}")
+async def confirm_references_endpoint(job_id: str):
+    """参照素材プレビュー画面で「進む」を押したらタイトル10選を生成する。"""
+    state = JOB_STATE.get(job_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません。最初からやり直してください。")
+    if state.get("status") != "references_review":
+        raise HTTPException(
+            status_code=409,
+            detail=f"現在のステータス（{state.get('status')}）からはタイトル生成に進めません。",
+        )
+
+    cfg = _cfg_from_state(state)
+    job_dir = JOBS / job_id
+    try:
+        candidates = start_titles_job(cfg, job_dir)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"タイトル生成に失敗しました：{exc}")
+
+    state.update({
+        "status": "title_picked",
+        "candidates": candidates,
+        "message": "タイトルを選んでください。",
+    })
+    return {
+        "job_id": job_id,
+        "candidates": candidates,
+        "reference_count": state.get("reference_count", 0),
+        "titles_regen_count": state.get("titles_regen_count", 0),
         "max_regen_per_stage": MAX_REGEN_PER_STAGE,
     }
 
@@ -517,6 +621,9 @@ async def status(job_id: str) -> JSONResponse:
         "max_regen_per_stage": MAX_REGEN_PER_STAGE,
         "adopted_index": state.get("adopted_index"),
     }
+    if state["status"] == "references_review":
+        payload["references"] = state.get("references_payload", [])
+        payload["has_warning"] = state.get("references_has_warning", False)
     if state["status"] in ("title_picked", "generating_structure", "structure_review", "regenerating_structure", "modifying_structure", "running"):
         payload["candidates"] = state.get("candidates", [])
     if state["status"] in ("structure_review", "regenerating_structure", "modifying_structure", "running"):

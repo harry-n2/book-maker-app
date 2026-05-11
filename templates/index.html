@@ -54,6 +54,49 @@
       <fieldset class="field reference-block">
         <legend>
           <span class="num">4</span>
+          <span class="label-title">出版希望者プロフィール</span>
+        </legend>
+        <span class="hint">著者ごとに背景、実績、口調を指定してください。未入力の項目は無理に本文へ配置しません。</span>
+
+        <div class="ref-row">
+          <span class="ref-label">表示する著者名</span>
+          <input type="text" id="profile_name" name="profile_name" placeholder="例：山田太郎">
+        </div>
+
+        <div class="ref-row">
+          <span class="ref-label">背景・実績・肩書き</span>
+          <textarea id="profile_author_bio" name="profile_author_bio" rows="3"
+            placeholder="例：中小企業のWeb集客を10年支援。飲食店、士業、ECの改善事例が多い。"></textarea>
+        </div>
+
+        <div class="ref-row">
+          <span class="ref-label">口調・文体</span>
+          <textarea id="profile_tone" name="profile_tone" rows="2"
+            placeholder="例：落ち着いた実務家の口調。断定しすぎず、具体例を交えて説明する。"></textarea>
+        </div>
+
+        <div class="ref-row">
+          <span class="ref-label">強調したいキーワード・読者像（1行1項目）</span>
+          <textarea id="profile_target_keywords" name="profile_target_keywords" rows="3"
+            placeholder="初心者経営者&#10;広告費を抑えたい&#10;問い合わせ導線"></textarea>
+        </div>
+
+        <div class="ref-row">
+          <span class="ref-label">使ってよい失敗例・実体験（1行1項目、任意）</span>
+          <textarea id="profile_failure_bank" name="profile_failure_bank" rows="3"
+            placeholder="例：広告だけに頼って利益が残らなかった案件"></textarea>
+        </div>
+
+        <div class="ref-row">
+          <span class="ref-label">使ってよい語り口の型（1行1項目、任意）</span>
+          <textarea id="profile_voice_types" name="profile_voice_types" rows="3"
+            placeholder="例：実務経験からの助言&#10;チェックリスト型の整理"></textarea>
+        </div>
+      </fieldset>
+
+      <fieldset class="field reference-block">
+        <legend>
+          <span class="num">4</span>
           <span class="label-title">参考にする素材（任意・複数可）</span>
         </legend>
         <span class="hint">添付した素材は本の事実・事例・固有名詞として使われます。</span>
@@ -87,6 +130,15 @@
           <p class="ref-counter" id="image-counter">0 / 10 画像選択中</p>
           <ul id="image-list" class="upload-list"></ul>
         </div>
+
+        <div class="ref-row">
+          <span class="ref-label">★ テキスト直貼り（任意・最も確実 ／ 複数本文は「---」行で区切る）</span>
+          <textarea id="pasted_text" name="pasted_text" rows="6"
+            placeholder="参照したい本文をそのまま貼り付けてください。&#10;Google Docs などが取得失敗する場合のフォールバックとして最強です。&#10;複数の本文を入れる場合は --- 行で区切ってください。"></textarea>
+          <span class="ref-hint-small">
+            URL や NotebookLM が取れない場合は、本文を直接ペーストすると確実に素材として使われます。
+          </span>
+        </div>
       </fieldset>
 
       <label class="field">
@@ -99,9 +151,23 @@
         <input type="password" id="api_key" name="api_key" required placeholder="AIzaSy...">
       </label>
 
-      <button type="submit" id="submit-btn">タイトル候補10選を作る</button>
+      <button type="submit" id="submit-btn">参照素材を取り込んで次へ →</button>
     </form>
-    <p class="note">最初に「タイトル候補10選」をAIが作ります（30〜60秒）。1つ選ぶと章立て案が生成され、内容を確認・修正してから本編生成に進みます。</p>
+    <p class="note">最初に参照素材（URL／ファイル／画像／NotebookLM／直貼りテキスト）を取り込み、内容のプレビュー画面で確認してからタイトル10選を生成します。素材が薄いと本書の品質が大きく下がるため、確認画面で取り込み結果をご覧ください。</p>
+  </section>
+
+  <section id="references-review-section" class="hidden">
+    <h2>参照素材の取り込み結果をご確認ください</h2>
+    <p class="note">本書はこの参照素材を「核」として生成されます。取り込みが不十分なソースがあれば、フォームに戻って素材を直してください。</p>
+    <div id="references-list" class="references-list"></div>
+    <div id="references-warning-banner" class="references-warning-banner hidden">
+      ⚠ <strong>警告のあるソースがあります。</strong> 短すぎる／取得失敗のソースは本書のクオリティを大きく損ないます。フォームに戻って素材を直すか、テキスト直貼り欄に本文を貼り付けることを強く推奨します。
+    </div>
+    <div class="references-actions">
+      <button type="button" id="back-to-form-btn" class="secondary-btn">← フォームに戻って素材を直す</button>
+      <button type="button" id="confirm-references-btn" class="primary-btn">この素材でタイトル10選を作成 →</button>
+    </div>
+    <p class="note" id="references-summary"></p>
   </section>
 
   <section id="title-pick-section" class="hidden">
@@ -178,7 +244,7 @@
 </main>
 
 <footer>
-  <p>Book Maker v1.1 ── 3段階UX（タイトル10選→章立てレビュー→本編）／ 章立て H1=4〜5・H2=2〜3 ／ Kindle KDP 入稿対応</p>
+  <p>Book Maker v1.2 ── 視認性向上版（コピペ枠・ケーススタディBOX・比較表・チェックリスト）／ 3段階UX ／ Kindle KDP 入稿対応</p>
 </footer>
 
 <script src="/static/app.js"></script>

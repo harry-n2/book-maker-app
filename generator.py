@@ -1,4 +1,4 @@
-"""書籍生成コア（v2：2段階UX・H1=4〜5、H2=2〜3、H3 任意）。"""
+﻿"""書籍生成コア（v2：2段階UX・H1=4〜5、H2=2〜3、H3 任意）。"""
 
 from __future__ import annotations
 
@@ -26,10 +26,62 @@ class BookConfig:
     api_key: str
     model: str = "gemini-2.0-flash"
     references: list = field(default_factory=list)
+    # v2.0: 著者プロファイル（フォームで都度入力・複数プロファイルを localStorage に保存）
+    profile_name: str = ""
+    profile_author_bio: str = ""
+    profile_tone: str = ""
+    profile_target_keywords: list[str] = field(default_factory=list)
+    profile_failure_bank: list[str] = field(default_factory=list)
+    profile_voice_types: list[str] = field(default_factory=list)
+
+
+def _profile_kwargs(cfg: BookConfig) -> dict:
+    """プロファイル系の format() 引数を一括生成。プロンプト共通変数。"""
+    kw_str = ", ".join(k for k in (cfg.profile_target_keywords or []) if k) or "（プロファイル未設定）"
+    fb_block = (
+        "\n".join(f"- {fb}" for fb in cfg.profile_failure_bank if fb)
+        or "（失敗談バンク未設定。失敗談の引用は省略可）"
+    )
+    vt_block = (
+        ", ".join(vt for vt in cfg.profile_voice_types if vt)
+        or "（voice_type 未設定。型に縛られず素直な文体で書いて構わない）"
+    )
+    return {
+        "profile_name": cfg.profile_name or "（無名）",
+        "profile_author_bio": cfg.profile_author_bio or "（著者経歴の指定なし）",
+        "profile_tone": cfg.profile_tone or "丁寧調を基調とし、命令形は使わない。マークダウン強調記号（**xxx**）は使わない。",
+        "profile_target_keywords": kw_str,
+        "profile_failure_bank_block": fb_block,
+        "profile_voice_types_block": vt_block,
+    }
+
+
+def _clean_profile_kwargs(cfg: BookConfig) -> dict:
+    """Prompt variables for optional per-author profile fields."""
+    keywords = ", ".join(k for k in (cfg.profile_target_keywords or []) if k) or "指定なし"
+    failure_bank = "\n".join(f"- {fb}" for fb in cfg.profile_failure_bank if fb) or "指定なし"
+    voice_types = "\n".join(f"- {vt}" for vt in cfg.profile_voice_types if vt) or "指定なし"
+    return {
+        "profile_name": cfg.profile_name or cfg.author or "指定なし",
+        "profile_author_bio": cfg.profile_author_bio or "指定なし",
+        "profile_tone": cfg.profile_tone or "丁寧で読みやすい実務調。過度な煽り、命令口調、装飾的な強調は使わない。",
+        "profile_target_keywords": keywords,
+        "profile_failure_bank_block": failure_bank,
+        "profile_voice_types_block": voice_types,
+    }
 
 
 def _load_prompt(name: str, **kwargs) -> str:
+    """プロンプトテンプレを読み込んで format。
+
+    `cfg=BookConfig` を渡すと、profile_* の format 変数が自動注入される。
+    呼び出し側で同名 kwarg を指定した場合はそちらを優先（上書き）。
+    """
     text = (PROMPTS / name).read_text(encoding="utf-8")
+    cfg = kwargs.pop("cfg", None)
+    if cfg is not None:
+        for k, v in _clean_profile_kwargs(cfg).items():
+            kwargs.setdefault(k, v)
     return text.format(**kwargs)
 
 
@@ -73,6 +125,7 @@ def _strip_codefence(s: str) -> str:
 def generate_titles(cfg: BookConfig) -> list[dict]:
     prompt = _load_prompt(
         "titles.txt",
+        cfg=cfg,
         theme=cfg.theme,
         target_layer=cfg.target_layer,
         author=cfg.author,
@@ -108,18 +161,25 @@ def render_title_candidates_md(cands: list[dict], adopted_index: int = 0) -> str
 # ---------------------------------------------------------------------------
 
 
-VOICE_TYPES = {
-    "公開躊躇型", "具体エピソード型", "数字インパクト型", "45歳の壁型",
-    "組織依存脱却型", "正直宣言型", "テンプレ提示型", "時間単価型",
-    "FIRE型", "業界権威型",
-}
-FAILURE_BANK_PREFIXES = {"A", "B", "C", "D", "E", "F", "G"}
+def _validate_structure(structure: dict, cfg: BookConfig | None = None) -> tuple[bool, str]:
+    """構造ルールを検証する。voice_type / failure_bank の許容セットはプロファイル依存。
 
-
-def _validate_structure(structure: dict) -> tuple[bool, str]:
+    プロファイルに voice_types / failure_bank が未設定なら、その項目の検証はスキップする
+    （マルチユーザー対応：他者プロファイルで型未指定でも生成できる）。
+    """
     chapters = structure.get("chapters", [])
     if not 4 <= len(chapters) <= 5:
         return False, f"chapters の数が 4〜5 ではない（実際: {len(chapters)}）"
+
+    allowed_voice_types: set[str] = set()
+    failure_bank_prefixes: set[str] = set()
+    if False and cfg is not None:
+        allowed_voice_types = {vt for vt in cfg.profile_voice_types if vt}
+        for fb in cfg.profile_failure_bank:
+            prefix = (fb.strip()[:1] if fb else "")
+            if prefix and prefix.isalpha():
+                failure_bank_prefixes.add(prefix.upper())
+
     failure_used: set[str] = set()
     for i, ch in enumerate(chapters):
         sections = ch.get("sections", [])
@@ -128,21 +188,26 @@ def _validate_structure(structure: dict) -> tuple[bool, str]:
         h3_total = sum(len(s.get("subsections", [])) for s in sections)
         if not 0 <= h3_total <= 2:
             return False, f"第{i+1}章の H3 合計が 0〜2 ではない（実際: {h3_total}）"
-        vt = ch.get("voice_type", "")
-        if vt and vt not in VOICE_TYPES:
-            return False, f"第{i+1}章の voice_type が10型以外（実際: {vt}）"
-        fb = ch.get("failure_bank", "")
-        prefix = (fb[:1] if fb else "")
-        if prefix in FAILURE_BANK_PREFIXES:
-            if prefix in failure_used:
-                return False, f"failure_bank が章間で重複（{prefix}）"
-            failure_used.add(prefix)
+
+        if allowed_voice_types:
+            vt = ch.get("voice_type", "")
+            if vt and vt not in allowed_voice_types:
+                return False, f"第{i+1}章の voice_type がプロファイル定義外（実際: {vt}）"
+
+        if failure_bank_prefixes:
+            fb = ch.get("failure_bank", "")
+            prefix = (fb[:1].upper() if fb else "")
+            if prefix and prefix in failure_bank_prefixes:
+                if prefix in failure_used:
+                    return False, f"failure_bank が章間で重複（{prefix}）"
+                failure_used.add(prefix)
     return True, "OK"
 
 
 def generate_structure(cfg: BookConfig, adopted_title: str, adopted_subtitle: str) -> dict:
     prompt = _load_prompt(
         "structure.txt",
+        cfg=cfg,
         adopted_title=adopted_title,
         adopted_subtitle=adopted_subtitle,
         theme=cfg.theme,
@@ -160,7 +225,7 @@ def generate_structure(cfg: BookConfig, adopted_title: str, adopted_subtitle: st
         except Exception as exc:  # noqa: BLE001
             last_err = f"JSON parse failed: {exc}"
             continue
-        ok, msg = _validate_structure(structure)
+        ok, msg = _validate_structure(structure, cfg)
         if ok:
             return structure
         last_err = msg
@@ -180,6 +245,7 @@ def generate_structure(cfg: BookConfig, adopted_title: str, adopted_subtitle: st
 def _system_prompt(cfg: BookConfig, title: str) -> str:
     return _load_prompt(
         "system.txt",
+        cfg=cfg,
         author=cfg.author,
         theme=cfg.theme,
         target_layer=cfg.target_layer,
@@ -206,40 +272,17 @@ def generate_chapter(
     if "：" in chapter_title:
         chapter_title = chapter_title.split("：", 1)[-1]
 
-    user_prompt = f"""
-第{chapter_number}章「{chapter_title}」を執筆してください。
+    user_prompt = _load_prompt(
+        "chapter.txt",
+        cfg=cfg,
+        chapter_number=chapter_number,
+        chapter_title=chapter_title,
+        key_message=ch.get("key_message", ""),
+        voice_type=ch.get("voice_type", "正直宣言型"),
+        failure_bank=ch.get("failure_bank", ""),
+        sections_text=sections_text,
+    )
 
-【この章の核メッセージ】
-{ch.get('key_message','')}
-
-【冒頭1行の型】
-{ch.get('voice_type','正直宣言型')}
-
-【挿入する失敗談】
-{ch.get('failure_bank','')}
-
-【守るべき節構造（H2/H3 を以下に厳密に従って書く）】
-{sections_text}
-
-【書く構造】
-1. 冒頭1行（指定の型から派生・1〜2文）
-2. 章導入（150〜300字）：失敗談を絡めて読者の痛みを共感
-3. 上記の H2 を 2〜3 個（指定どおり）に展開（H3 があれば内部に配置）
-4. 章末「この章のまとめ」（3項目の箇条書き）
-5. 章末「いますぐの1分アクション」（チェックボックスで1項目）
-
-【出力フォーマット】
-- Markdown 形式
-- H1 は「# 第{chapter_number}章──{chapter_title}」
-- H2 は指定された節タイトルそのまま使用
-- H3 がある場合は指定の小節タイトルそのまま使用
-- 章末「この章のまとめ」「いますぐの1分」は H2 にカウントしない（独立扱い）
-- 出力は Markdown のみ。コードフェンスでラップしない
-- マークダウン強調記号「**xxx**」絶対使用禁止
-- 命令形「〜しろ／〜してくれ」絶対禁止
-- 中流階級KW（年収・時間単価・組織・年商・キャリア・45歳の壁）を最低1回
-- 通常段落は「。」で必ず改行（各文を独立段落に）
-"""
     refs = _references_block(cfg)
     if refs:
         user_prompt = refs + "\n\n" + user_prompt
@@ -252,6 +295,7 @@ def generate_chapter(
 def generate_reference(cfg: BookConfig, ch: dict, chapter_number: int) -> str:
     prompt = _load_prompt(
         "reference.txt",
+        cfg=cfg,
         chapter_number=chapter_number,
         chapter_title=ch.get("title", ""),
         key_message=ch.get("key_message", ""),
@@ -262,6 +306,7 @@ def generate_reference(cfg: BookConfig, ch: dict, chapter_number: int) -> str:
 def generate_promotion(cfg: BookConfig, structure: dict) -> str:
     prompt = _load_prompt(
         "promotion.txt",
+        cfg=cfg,
         title=structure.get("title", ""),
         author=cfg.author,
         theme=cfg.theme,
@@ -284,6 +329,7 @@ def _structure_summary(structure: dict) -> str:
 def generate_description(cfg: BookConfig, structure: dict) -> str:
     prompt = _load_prompt(
         "description.txt",
+        cfg=cfg,
         title=structure.get("title", ""),
         subtitle=structure.get("subtitle", ""),
         theme=cfg.theme,
@@ -312,6 +358,7 @@ def regenerate_titles_bestseller(cfg: BookConfig, prev_candidates: list[dict]) -
     """ベストセラー強化版タイトル10選を再生成。前回案を渡して差別化を強制する。"""
     prompt = _load_prompt(
         "titles_bestseller.txt",
+        cfg=cfg,
         theme=cfg.theme,
         target_layer=cfg.target_layer,
         author=cfg.author,
@@ -339,6 +386,7 @@ def generate_structure_bestseller(
     """ベストセラー強化版章立てを再生成。前回構造を渡して差別化を強制する。"""
     base_prompt = _load_prompt(
         "structure_bestseller.txt",
+        cfg=cfg,
         adopted_title=adopted_title,
         adopted_subtitle=adopted_subtitle,
         theme=cfg.theme,
@@ -358,7 +406,7 @@ def generate_structure_bestseller(
         except Exception as exc:  # noqa: BLE001
             last_err = f"JSON parse failed: {exc}"
             continue
-        ok, msg = _validate_structure(structure)
+        ok, msg = _validate_structure(structure, cfg)
         if ok:
             return structure
         last_err = msg
@@ -380,6 +428,7 @@ def modify_structure(
     """ユーザーの自由記述指示で章立てを部分修正する。"""
     base_prompt = _load_prompt(
         "structure_modify.txt",
+        cfg=cfg,
         adopted_title=adopted_title,
         adopted_subtitle=adopted_subtitle,
         theme=cfg.theme,
@@ -397,7 +446,7 @@ def modify_structure(
         except Exception as exc:  # noqa: BLE001
             last_err = f"JSON parse failed: {exc}"
             continue
-        ok, msg = _validate_structure(structure)
+        ok, msg = _validate_structure(structure, cfg)
         if ok:
             return structure
         last_err = msg
@@ -695,9 +744,14 @@ def convert_to_docx(md_path: Path, docx_path: Path) -> None:
     import pypandoc
 
     extra_args = ["--standalone", "--toc", "--toc-depth=3"]
-    ref_doc = _resource.resource("templates", "reference_v7.docx")
-    if ref_doc.exists():
-        extra_args.append(f"--reference-doc={ref_doc}")
+    # v1.2: 視認性向上版（コピペ枠・ケーススタディBOX のスタイル拡張）を優先。
+    # v8 が無ければ v7 にフォールバック、それも無ければ Pandoc 既定。
+    ref_v8 = _resource.resource("templates", "reference_v8.docx")
+    ref_v7 = _resource.resource("templates", "reference_v7.docx")
+    if ref_v8.exists():
+        extra_args.append(f"--reference-doc={ref_v8}")
+    elif ref_v7.exists():
+        extra_args.append(f"--reference-doc={ref_v7}")
 
     pypandoc.convert_file(
         str(md_path),
@@ -706,3 +760,4 @@ def convert_to_docx(md_path: Path, docx_path: Path) -> None:
         format="markdown+raw_attribute",
         extra_args=extra_args,
     )
+
