@@ -1,0 +1,12 @@
+build/
+dist/
+jobs/
+__pycache__/
+*.pyc
+*.spec
+*.ico
+*.png
+*.bat
+*.sh
+handover_*.md
+_handoff_*.md
