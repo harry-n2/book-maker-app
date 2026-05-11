@@ -56,7 +56,19 @@ node --check static\app.js
 Prompt formatting smoke test was also run for all prompt files through `_load_prompt()`.
 
 ## Git / Deploy
-The user requested push to GitHub and Vercel production deployment. Check latest commit and deployment status before continuing:
+The user requested push to GitHub and Vercel production deployment.
+
+- Pushed to `origin/main`.
+- Production alias: `https://bookmakerapp.vercel.app`
+- Deployment URL: `https://bookmaker-b1f6jxddu-harry-n2.vercel.app`
+- Inspect URL: `https://vercel.com/harry-n2/book_maker_app/GKGtP44XHz1SPE8KkRQda2GtGKJk`
+
+Recent deployment-related commits:
+- `6855cca feat: support per-author book profiles`
+- `dc6fef0 fix: reduce Vercel Python bundle size`
+- `bdb20df chore: exclude local artifacts from Vercel`
+
+Check latest commit and deployment status before continuing:
 
 ```powershell
 git -C "C:\Users\naoya\myproject\book_maker_app" log --oneline -5
@@ -69,3 +81,6 @@ vercel ls
   `git config --global --add safe.directory C:/Users/naoya/myproject/book_maker_app`
 - Existing UI text still contains older mojibake in several labels. The newest profile block and prompt behavior are the relevant functional changes from this pass.
 - Live Gemini generation was not run during the implementation pass.
+- Vercel production build required two fixes:
+  - remove `pypandoc-binary` from production requirements and use local `pypandoc.py` shim
+  - add `.vercelignore` for `build/`, `dist/`, `jobs/`, caches, and local artifacts

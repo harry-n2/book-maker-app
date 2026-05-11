@@ -48,3 +48,18 @@ Prompt formatting was also smoke-tested through `_load_prompt()` for:
 ## Remaining cautions
 - No live Gemini generation was run, so model output quality should still be checked with a real API key.
 - Existing UI text outside the newly added profile block still contains old mojibake text from prior work; this task focused on profile behavior, prompt discipline, and visibility issues.
+
+## GitHub / Vercel
+- Pushed to GitHub `origin/main`.
+- Production alias: `https://bookmakerapp.vercel.app`
+- Deployment URL: `https://bookmaker-b1f6jxddu-harry-n2.vercel.app`
+- Inspect: `https://vercel.com/harry-n2/book_maker_app/GKGtP44XHz1SPE8KkRQda2GtGKJk`
+
+## Vercel Build Notes
+- Vercel failed twice due Python function bundle limits:
+  - 607.78 MB before removing `pypandoc-binary`
+  - 257.69 MB before excluding local artifacts
+- Fixes added:
+  - `pypandoc.py` local shim using system Pandoc when available, otherwise `python-docx` fallback
+  - `requirements.txt` no longer installs `pypandoc-binary` in production
+  - `.vercelignore` excludes `build/`, `dist/`, `jobs/`, cache files, and local handoff/build artifacts

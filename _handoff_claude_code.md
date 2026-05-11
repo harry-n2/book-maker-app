@@ -56,3 +56,18 @@
 ## Notes
 - PowerShell profile execution policy warnings appeared in command output but did not block checks.
 - `git status` may fail under sandbox user due dubious ownership unless `safe.directory` is configured.
+
+## GitHub / Vercel Deployment
+- Pushed to `origin/main`.
+- Latest deployment alias: `https://bookmakerapp.vercel.app`
+- Production deployment URL: `https://bookmaker-b1f6jxddu-harry-n2.vercel.app`
+- Vercel inspect URL: `https://vercel.com/harry-n2/book_maker_app/GKGtP44XHz1SPE8KkRQda2GtGKJk`
+
+## Deployment Fixes
+- Added local `pypandoc.py` shim and moved `pypandoc-binary` out of production requirements to avoid Vercel Python bundle size failure.
+- Added `.vercelignore` to exclude local build artifacts:
+  - `build/`
+  - `dist/`
+  - `jobs/`
+  - `__pycache__/`
+- First deploy attempts failed at 607.78 MB and then 257.69 MB bundle sizes. Final deploy succeeded after dependency and artifact exclusions.
