@@ -39,7 +39,7 @@ Vercel 本番：https://bookmakerapp.vercel.app
 
 ### 技術スタック
 - FastAPI + Uvicorn（Web フレームワーク）
-- Google Gemini API（gemini-2.0-flash-exp・無料枠 1日1,500req）
+- Google Gemini API（gemini-2.0-flash・無料枠 1日1,500req）
 - pypandoc-binary（Pandoc 同梱・MD→DOCX 変換）
 - python-docx（DOCX 操作）
 - pypdf / trafilatura / Pillow（参照素材取り込み）

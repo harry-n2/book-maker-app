@@ -172,7 +172,7 @@ def _extract_docx(path: Path) -> str:
 # ---------------------------------------------------------------------------
 
 
-def analyze_image(path: Path, original_name: str, api_key: str, model: str = "gemini-2.0-flash-exp") -> Reference:
+def analyze_image(path: Path, original_name: str, api_key: str, model: str = "gemini-2.0-flash") -> Reference:
     label = f"image: {original_name}"
     try:
         import google.generativeai as genai

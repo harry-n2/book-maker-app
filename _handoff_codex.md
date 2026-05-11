@@ -35,7 +35,7 @@ LINE：lin.ee/7qGC2YD
 
 ### 技術スタック
 - FastAPI + Uvicorn（同期/非同期 Web フレームワーク）
-- Google Gemini API（gemini-2.0-flash-exp）
+- Google Gemini API（gemini-2.0-flash）
 - pypandoc-binary（Pandoc 同梱・MD→DOCX）
 - python-docx / pypdf / trafilatura / Pillow
 - PyInstaller（exe ビルド）

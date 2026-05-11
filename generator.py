@@ -24,7 +24,7 @@ class BookConfig:
     target_layer: str
     author: str
     api_key: str
-    model: str = "gemini-2.0-flash-exp"
+    model: str = "gemini-2.0-flash"
     references: list = field(default_factory=list)
 
 
