@@ -56,9 +56,11 @@ Also verify:
 
 ## Deployment
 
-- Push to `origin/main`.
-- Deploy with Vercel production.
-- Update this section with the final commit hash, deployment URL, and inspect URL after deployment.
+- Pushed to `origin/main`.
+- Final implementation commit: `f57ed0e fix: clean manuscript artifacts`
+- Production alias: `https://bookmakerapp.vercel.app`
+- Production deployment URL: `https://bookmaker-ctcpaz30k-harry-n2.vercel.app`
+- Vercel inspect URL: `https://vercel.com/harry-n2/book_maker_app/8Ao6HP7cLPCaK6CVZNA4ozULgTtf`
 
 ## Notes
 

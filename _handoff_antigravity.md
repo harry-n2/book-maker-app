@@ -57,9 +57,11 @@ Then run a smoke test that checks:
 
 ## Deployment
 
-- Push to GitHub `origin/main`.
-- Deploy Vercel production.
-- After deployment, record the final commit hash, production URL, and Vercel inspect URL here.
+- Pushed to GitHub `origin/main`.
+- Final implementation commit: `f57ed0e fix: clean manuscript artifacts`
+- Production alias: `https://bookmakerapp.vercel.app`
+- Production deployment URL: `https://bookmaker-ctcpaz30k-harry-n2.vercel.app`
+- Vercel inspect URL: `https://vercel.com/harry-n2/book_maker_app/8Ao6HP7cLPCaK6CVZNA4ozULgTtf`
 
 ## Cautions
 

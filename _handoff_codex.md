@@ -66,11 +66,11 @@ Smoke tests should verify:
 
 ## Deployment
 
-After this change:
-
-- Push to `origin/main`.
-- Deploy to Vercel production.
-- Record final commit hash, production deployment URL, and inspect URL in all three handoff files.
+- Pushed to `origin/main`.
+- Final implementation commit: `f57ed0e fix: clean manuscript artifacts`
+- Production alias: `https://bookmakerapp.vercel.app`
+- Production deployment URL: `https://bookmaker-ctcpaz30k-harry-n2.vercel.app`
+- Vercel inspect URL: `https://vercel.com/harry-n2/book_maker_app/8Ao6HP7cLPCaK6CVZNA4ozULgTtf`
 
 ## Notes
 
