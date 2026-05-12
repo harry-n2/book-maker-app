@@ -59,7 +59,7 @@ Smoke checks:
 
 ## Latest Deployment
 
-- Implementation commit: `336d193 fix: keep word toc after introduction`
-- Production deployment URL: `https://bookmaker-ecmw79byx-harry-n2.vercel.app`
-- Vercel inspect URL: `https://vercel.com/harry-n2/book_maker_app/96QurVkTG6wbxKrp292qw34xbo3U`
+- Implementation commit: `5372f6a fix: preserve heading spacing in outputs`
+- Production deployment URL: `https://bookmaker-4j9xnrpbw-harry-n2.vercel.app`
+- Vercel inspect URL: `https://vercel.com/harry-n2/book_maker_app/7v4JJWzktFmvgxfqnaHwm9Si96Qb`
 - Production alias: `https://bookmakerapp.vercel.app`
