@@ -16,8 +16,9 @@
 - Pandocが生成したWord TOCフィールドの `w:sdt` ブロックがある場合は、それを移動するだけにする。
 - Pandocが無くローカルフォールバックでTOCが無い場合だけ、DOCX XMLに同等のWord TOCフィールドを補完する。Markdown目次は禁止。
 - `apply_period_breaks()` の見出し直後空行は維持する。
-- 展開折り畳み式の部分修正UIは再追加しない。
-
+- Remove `w:outlineLvl` from `Heading1`, `Heading2`, `Heading3`, and `TOCHeading`.
+- Keep the Word TOC on style mapping: `TOC \h \z \t "Heading1,1,Heading2,2,Heading3,3"`.
+- Keep the heading collapse controls removed from the generated Word file.
 ## Implementation Notes
 
 - `generator.py` contains `move_word_toc_after_intro(docx_path)`.
@@ -53,12 +54,12 @@ Do not revert this back to a manual Markdown TOC.
 ## Heading Page Start Rule
 
 - Preserve page-start behavior in both Markdown and DOCX.
-- Never write raw OpenXML page-break text into Markdown.
-- `build_merged_md()` must use `ensure_markdown_heading_page_starts()` with the safe `<!-- page-start -->` marker before Markdown H1-H3 lines.
+- Do not emit any visible page-start marker into Markdown.
+- Markdown keeps only the normal heading spacing; page-start control happens in DOCX.
 - `move_word_toc_after_intro()` must run `apply_heading_page_starts()` before writing `word/document.xml`.
 - DOCX `Title`, `TOCHeading`, `Heading1`, `Heading2`, and `Heading3` paragraphs must keep `w:pageBreakBefore`.
 - Do not restore the old before-heading or after-heading page-break paragraph behavior.
-- The partial-edit / expand-collapse feature is prohibited: no UI, no `/modify-structure` API, no `modify_structure()` generator, no `structure_modify_count`, and no `modifying_structure` status.
+- The partial-edit UI and `/modify-structure` API are prohibited. Keep `modify_structure()`, `structure_modify_count`, and `modifying_structure` out of the codebase.
 
 ## Latest Deployment
 

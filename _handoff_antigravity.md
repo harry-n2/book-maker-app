@@ -15,16 +15,19 @@
 - `move_word_toc_after_intro()` must run `apply_heading_after_spacing()` before writing `word/document.xml`.
 - DOCX `Title`, `TOCHeading`, `Heading1`, `Heading2`, and `Heading3` paragraphs must keep direct `w:spacing w:after="80"`.
 - This covers the title, intro heading, Word TOC heading, H1, H2, H3, and outro heading. Do not remove or weaken this rule.
+- Remove `w:outlineLvl` from `TOCHeading`, `Heading1`, `Heading2`, and `Heading3` in the generated DOCX so Word does not show heading collapse controls.
+- Keep the Word TOC working by using a style-based field instruction: `TOC \h \z \t "Heading1,1,Heading2,2,Heading3,3"`.
 
 ## Heading Page Start Rule
 
 - Preserve page-start behavior in both Markdown and DOCX.
-- Never write raw OpenXML page-break text into Markdown.
-- `build_merged_md()` must use `ensure_markdown_heading_page_starts()` with the safe `<!-- page-start -->` marker before Markdown H1-H3 lines.
+- Do not emit any visible page-start marker into Markdown.
+- Markdown keeps only the normal heading spacing; page-start control happens in DOCX.
 - `move_word_toc_after_intro()` must run `apply_heading_page_starts()` before writing `word/document.xml`.
 - DOCX `Title`, `TOCHeading`, `Heading1`, `Heading2`, and `Heading3` paragraphs must keep `w:pageBreakBefore`.
 - Do not restore the old before-heading or after-heading page-break paragraph behavior.
-- The partial-edit / expand-collapse feature is prohibited: no UI, no `/modify-structure` API, no `modify_structure()` generator, no `structure_modify_count`, and no `modifying_structure` status.
+- Do not reintroduce heading outline levels as a way to render the TOC.
+- The partial-edit UI and `/modify-structure` API are prohibited. Keep `modify_structure()`, `structure_modify_count`, and `modifying_structure` out of the codebase.
 
 ## Must Preserve
 
@@ -35,7 +38,7 @@
 - Move the generated Word TOC `w:sdt` block when it exists.
 - If no TOC exists because local fallback conversion ran without Pandoc, insert an equivalent Word TOC field in DOCX XML. Never use a Markdown TOC.
 - Preserve the heading newline behavior in `apply_period_breaks()`.
-- Keep the expand/collapse partial-edit UI removed.
+- Keep the partial-edit UI removed.
 
 ## Current Mechanism
 

@@ -551,38 +551,8 @@ def start_writing(
 # ---------------------------------------------------------------------------
 
 
-PAGE_START_MARKER = "<!-- page-start -->"
 HEADING_RE = re.compile(r"^(#{1,3})\s")
 FENCE_RE = re.compile(r"^\s*```")
-
-
-def ensure_markdown_heading_page_starts(body: str) -> str:
-    lines = body.split("\n")
-    out: list[str] = []
-    in_code = False
-    idx = 0
-    while idx < len(lines):
-        line = lines[idx]
-        if FENCE_RE.match(line):
-            in_code = not in_code
-            out.append(line)
-            idx += 1
-            continue
-        if not in_code and HEADING_RE.match(line):
-            prev_idx = len(out) - 1
-            while prev_idx >= 0 and not out[prev_idx].strip():
-                prev_idx -= 1
-            if prev_idx < 0 or out[prev_idx].strip() != PAGE_START_MARKER:
-                if out and out[-1].strip():
-                    out.append("")
-                out.append(PAGE_START_MARKER)
-                out.append("")
-            out.append(line)
-            idx += 1
-            continue
-        out.append(line)
-        idx += 1
-    return "\n".join(out)
 
 
 def clean_public_manuscript(text: str) -> str:
@@ -762,8 +732,7 @@ def build_merged_md(
 
     body = "\n\n".join(body_parts)
     merged = clean_public_manuscript(cover + body + "\n")
-    spaced = ensure_markdown_heading_spacing(merged)
-    return ensure_markdown_heading_page_starts(spaced)
+    return ensure_markdown_heading_spacing(merged)
 
 
 def convert_to_docx(md_path: Path, docx_path: Path) -> None:
@@ -795,6 +764,7 @@ ET.register_namespace("w", WORD_NS)
 HEADING_AFTER_SPACING_STYLES = {"Title", "TOCHeading", "Heading1", "Heading2", "Heading3"}
 HEADING_AFTER_SPACING_TWIPS = "80"
 HEADING_PAGE_START_STYLES = {"Title", "TOCHeading", "Heading1", "Heading2", "Heading3"}
+WORD_TOC_FIELD_INSTRUCTION = 'TOC \\h \\z \\t "Heading1,1,Heading2,2,Heading3,3"'
 
 
 def _w_tag(name: str) -> str:
@@ -853,6 +823,29 @@ def apply_heading_page_starts(body: ET.Element) -> None:
         _ensure_heading_page_start(paragraph)
 
 
+def _remove_outline_level(style: ET.Element) -> None:
+    p_pr = style.find(_w_tag("pPr"))
+    if p_pr is None:
+        return
+    outline = p_pr.find(_w_tag("outlineLvl"))
+    if outline is not None:
+        p_pr.remove(outline)
+
+
+def _rewrite_word_toc_instruction(toc_node: ET.Element) -> None:
+    for instr in toc_node.iter(_w_tag("instrText")):
+        if "TOC" in (instr.text or ""):
+            instr.text = WORD_TOC_FIELD_INSTRUCTION
+            return
+
+
+def _remove_heading_outline_levels(styles_root: ET.Element) -> None:
+    for style in styles_root.findall(_w_tag("style")):
+        style_id = style.attrib.get(_w_tag("styleId"), "")
+        if style_id in {"TOCHeading", "Heading1", "Heading2", "Heading3"}:
+            _remove_outline_level(style)
+
+
 def remove_pagebreak_paragraphs(container: ET.Element) -> None:
     for child in list(container):
         if _is_pagebreak_paragraph(child):
@@ -903,7 +896,7 @@ def _make_word_toc_sdt() -> ET.Element:
     field_r = ET.SubElement(field_p, _w_tag("r"))
     ET.SubElement(field_r, _w_tag("fldChar"), {_w_tag("fldCharType"): "begin", _w_tag("dirty"): "true"})
     instr = ET.SubElement(field_r, _w_tag("instrText"), {"{http://www.w3.org/XML/1998/namespace}space": "preserve"})
-    instr.text = 'TOC \\o "1-3" \\h \\z \\u'
+    instr.text = WORD_TOC_FIELD_INSTRUCTION
     ET.SubElement(field_r, _w_tag("fldChar"), {_w_tag("fldCharType"): "separate"})
     ET.SubElement(field_r, _w_tag("fldChar"), {_w_tag("fldCharType"): "end"})
     return sdt
@@ -939,6 +932,8 @@ def move_word_toc_after_intro(docx_path: Path) -> None:
                 break
         if toc_node is None:
             toc_node = _make_word_toc_sdt()
+        else:
+            _rewrite_word_toc_instruction(toc_node)
 
         children = list(body)
         intro_idx: int | None = None
@@ -962,6 +957,12 @@ def move_word_toc_after_intro(docx_path: Path) -> None:
         remove_pagebreak_paragraphs(body)
         apply_heading_after_spacing(body)
         apply_heading_page_starts(body)
+        styles_xml = tmp_path / "word" / "styles.xml"
+        if styles_xml.exists():
+            styles_tree = ET.parse(styles_xml)
+            styles_root = styles_tree.getroot()
+            _remove_heading_outline_levels(styles_root)
+            styles_tree.write(styles_xml, encoding="utf-8", xml_declaration=True)
         tree.write(document_xml, encoding="utf-8", xml_declaration=True)
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as tmp_docx:
