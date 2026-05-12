@@ -61,7 +61,7 @@ Check:
 
 ## Latest Deployment
 
-- Implementation commit: `5372f6a fix: preserve heading spacing in outputs`
-- Production deployment URL: `https://bookmaker-4j9xnrpbw-harry-n2.vercel.app`
-- Vercel inspect URL: `https://vercel.com/harry-n2/book_maker_app/7v4JJWzktFmvgxfqnaHwm9Si96Qb`
+- Implementation commit: `3ae3eda fix: preserve heading page breaks`
+- Production deployment URL: `https://bookmaker-krczurzus-harry-n2.vercel.app`
+- Vercel inspect URL: `https://vercel.com/harry-n2/book_maker_app/5syj2xf2eLqjyAsQHGsaVfuXyE4N`
 - Production alias: `https://bookmakerapp.vercel.app`
