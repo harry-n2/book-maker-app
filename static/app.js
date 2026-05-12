@@ -453,7 +453,7 @@
       hideAllSections();
       show(structureGeneratingSection);
       structureGeneratingMessage.textContent = state.message || "章立てを構築中…";
-    } else if (state.status === "regenerating_structure" || state.status === "modifying_structure") {
+    } else if (state.status === "regenerating_structure") {
       hideAllSections();
       show(structureGeneratingSection);
       structureGeneratingMessage.textContent = state.message || "章立てを更新中…";

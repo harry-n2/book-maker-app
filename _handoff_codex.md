@@ -16,14 +16,15 @@
 - DOCX `Title`, `TOCHeading`, `Heading1`, `Heading2`, and `Heading3` paragraphs must keep direct `w:spacing w:after="80"`.
 - This covers the title, intro heading, Word TOC heading, H1, H2, H3, and outro heading. Do not remove or weaken this rule.
 
-## Heading Page Break Rule
+## Heading Page Start Rule
 
-- Preserve heading-after page breaks in both Markdown and DOCX.
-- `build_merged_md()` must add the OpenXML page-break raw block after cleanup and Markdown heading spacing, using `insert_pagebreaks_after_headings()`.
-- Keep the page break after Markdown H1-H3 lines. Do not restore the old before-heading behavior.
-- `move_word_toc_after_intro()` must run `apply_heading_after_pagebreaks()` before writing `word/document.xml`.
-- DOCX `Title`, `TOCHeading`, `Heading1`, `Heading2`, and `Heading3` paragraphs must have a page-break paragraph immediately after them unless one already exists.
-- This covers the title, intro heading, Word TOC heading, H1, H2, H3, and outro heading. Do not remove or weaken this rule.
+- Preserve page-start behavior in both Markdown and DOCX.
+- Never write raw OpenXML page-break text into Markdown.
+- `build_merged_md()` must use `ensure_markdown_heading_page_starts()` with the safe `<!-- page-start -->` marker before Markdown H1-H3 lines.
+- `move_word_toc_after_intro()` must run `apply_heading_page_starts()` before writing `word/document.xml`.
+- DOCX `Title`, `TOCHeading`, `Heading1`, `Heading2`, and `Heading3` paragraphs must keep `w:pageBreakBefore`.
+- Do not restore the old before-heading or after-heading page-break paragraph behavior.
+- The partial-edit / expand-collapse feature is prohibited: no UI, no `/modify-structure` API, no `modify_structure()` generator, no `structure_modify_count`, and no `modifying_structure` status.
 
 ## Non-Negotiable Output Rules
 

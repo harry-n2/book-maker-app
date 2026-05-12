@@ -430,45 +430,6 @@ def generate_structure_bestseller(
     raise RuntimeError(f"Bestseller structure validation failed: {last_err}")
 
 
-def modify_structure(
-    cfg: BookConfig,
-    current_structure: dict,
-    user_instruction: str,
-    adopted_title: str,
-    adopted_subtitle: str,
-) -> dict:
-    """ユーザーの自由記述指示で章立てを部分修正する。"""
-    base_prompt = _load_prompt(
-        "structure_modify.txt",
-        cfg=cfg,
-        adopted_title=adopted_title,
-        adopted_subtitle=adopted_subtitle,
-        theme=cfg.theme,
-        target_layer=cfg.target_layer,
-        author=cfg.author,
-        current_structure_json=json.dumps(current_structure, ensure_ascii=False, indent=2),
-        user_instruction=user_instruction.strip(),
-    )
-    last_err = ""
-    prompt = base_prompt
-    for _ in range(3):
-        raw = _strip_codefence(_call_gemini(cfg.api_key, cfg.model, prompt))
-        try:
-            structure = json.loads(raw)
-        except Exception as exc:  # noqa: BLE001
-            last_err = f"JSON parse failed: {exc}"
-            continue
-        ok, msg = _validate_structure(structure, cfg)
-        if ok:
-            return structure
-        last_err = msg
-        prompt = (
-            base_prompt
-            + f"\n\n【前回の出力でルール違反: {msg}】"
-            + "\n指摘事項を解消した正しい JSON だけを返してください。"
-        )
-    raise RuntimeError(f"Structure modification validation failed: {last_err}")
-
 
 def generate_structure_for_review(
     cfg: BookConfig,
@@ -590,32 +551,12 @@ def start_writing(
 # ---------------------------------------------------------------------------
 
 
-PAGEBREAK_OPENXML = '<w:p><w:r><w:br w:type="page"/></w:r></w:p>'
-PAGEBREAK_RAW = (
-    "```{=openxml}\n"
-    f"{PAGEBREAK_OPENXML}\n"
-    "```"
-)
+PAGE_START_MARKER = "<!-- page-start -->"
 HEADING_RE = re.compile(r"^(#{1,3})\s")
 FENCE_RE = re.compile(r"^\s*```")
 
 
-def _has_pagebreak_raw_block(lines: list[str], start_idx: int) -> bool:
-    if start_idx >= len(lines) or lines[start_idx].strip() != "```{=openxml}":
-        return False
-    idx = start_idx + 1
-    found_pagebreak = False
-    while idx < len(lines):
-        stripped = lines[idx].strip()
-        if stripped == PAGEBREAK_OPENXML:
-            found_pagebreak = True
-        if stripped == "```":
-            return found_pagebreak
-        idx += 1
-    return False
-
-
-def insert_pagebreaks_after_headings(body: str) -> str:
+def ensure_markdown_heading_page_starts(body: str) -> str:
     lines = body.split("\n")
     out: list[str] = []
     in_code = False
@@ -628,16 +569,15 @@ def insert_pagebreaks_after_headings(body: str) -> str:
             idx += 1
             continue
         if not in_code and HEADING_RE.match(line):
+            prev_idx = len(out) - 1
+            while prev_idx >= 0 and not out[prev_idx].strip():
+                prev_idx -= 1
+            if prev_idx < 0 or out[prev_idx].strip() != PAGE_START_MARKER:
+                if out and out[-1].strip():
+                    out.append("")
+                out.append(PAGE_START_MARKER)
+                out.append("")
             out.append(line)
-            next_idx = idx + 1
-            while next_idx < len(lines) and not lines[next_idx].strip():
-                next_idx += 1
-            if not _has_pagebreak_raw_block(lines, next_idx):
-                out.append("")
-                out.extend(PAGEBREAK_RAW.split("\n"))
-                out.append("")
-                idx = next_idx
-                continue
             idx += 1
             continue
         out.append(line)
@@ -647,7 +587,7 @@ def insert_pagebreaks_after_headings(body: str) -> str:
 
 def clean_public_manuscript(text: str) -> str:
     text = re.sub(r"```{=openxml}.*?```", "", text, flags=re.DOTALL)
-    text = text.replace('<w:p><w:r><w:br w:type="page"/></w:r></w:p>', "")
+    text = re.sub(r"<w:p>\s*<w:r>\s*<w:br\s+w:type=['\"]page['\"]\s*/>\s*</w:r>\s*</w:p>", "", text)
     text = re.sub(r"```{=openxml}\s*```", "", text, flags=re.MULTILINE)
     text = re.sub(r"(?m)^\s*%\s+.*$", "", text)
     text = re.sub(r"「\s*」", "", text)
@@ -823,7 +763,7 @@ def build_merged_md(
     body = "\n\n".join(body_parts)
     merged = clean_public_manuscript(cover + body + "\n")
     spaced = ensure_markdown_heading_spacing(merged)
-    return insert_pagebreaks_after_headings(spaced)
+    return ensure_markdown_heading_page_starts(spaced)
 
 
 def convert_to_docx(md_path: Path, docx_path: Path) -> None:
@@ -854,7 +794,7 @@ ET.register_namespace("w", WORD_NS)
 
 HEADING_AFTER_SPACING_STYLES = {"Title", "TOCHeading", "Heading1", "Heading2", "Heading3"}
 HEADING_AFTER_SPACING_TWIPS = "80"
-HEADING_AFTER_PAGEBREAK_STYLES = {"Title", "TOCHeading", "Heading1", "Heading2", "Heading3"}
+HEADING_PAGE_START_STYLES = {"Title", "TOCHeading", "Heading1", "Heading2", "Heading3"}
 
 
 def _w_tag(name: str) -> str:
@@ -895,32 +835,30 @@ def apply_heading_after_spacing(body: ET.Element) -> None:
         _ensure_heading_after_spacing(paragraph)
 
 
-def _make_pagebreak_paragraph() -> ET.Element:
-    paragraph = ET.Element(_w_tag("p"))
-    run = ET.SubElement(paragraph, _w_tag("r"))
-    ET.SubElement(run, _w_tag("br"), {_w_tag("type"): "page"})
-    return paragraph
+def _ensure_heading_page_start(paragraph: ET.Element) -> None:
+    if paragraph.tag != _w_tag("p"):
+        return
+    if _paragraph_style(paragraph) not in HEADING_PAGE_START_STYLES:
+        return
+    p_pr = paragraph.find(_w_tag("pPr"))
+    if p_pr is None:
+        p_pr = ET.Element(_w_tag("pPr"))
+        paragraph.insert(0, p_pr)
+    if p_pr.find(_w_tag("pageBreakBefore")) is None:
+        ET.SubElement(p_pr, _w_tag("pageBreakBefore"))
 
 
-def _insert_pagebreaks_after_target_paragraphs(container: ET.Element) -> None:
-    children = list(container)
-    offset = 0
-    for idx, child in enumerate(children):
-        if child.tag != _w_tag("p"):
-            continue
-        if _paragraph_style(child) not in HEADING_AFTER_PAGEBREAK_STYLES:
-            continue
-        next_child = children[idx + 1] if idx + 1 < len(children) else None
-        if next_child is not None and _is_pagebreak_paragraph(next_child):
-            continue
-        container.insert(idx + 1 + offset, _make_pagebreak_paragraph())
-        offset += 1
+def apply_heading_page_starts(body: ET.Element) -> None:
+    for paragraph in body.iter(_w_tag("p")):
+        _ensure_heading_page_start(paragraph)
 
 
-def apply_heading_after_pagebreaks(body: ET.Element) -> None:
-    _insert_pagebreaks_after_target_paragraphs(body)
-    for sdt_content in body.iter(_w_tag("sdtContent")):
-        _insert_pagebreaks_after_target_paragraphs(sdt_content)
+def remove_pagebreak_paragraphs(container: ET.Element) -> None:
+    for child in list(container):
+        if _is_pagebreak_paragraph(child):
+            container.remove(child)
+        else:
+            remove_pagebreak_paragraphs(child)
 
 
 def _is_heading1(node: ET.Element) -> bool:
@@ -1021,8 +959,9 @@ def move_word_toc_after_intro(docx_path: Path) -> None:
                 insert_idx -= 1
             body.insert(insert_idx, toc_node)
 
+        remove_pagebreak_paragraphs(body)
         apply_heading_after_spacing(body)
-        apply_heading_after_pagebreaks(body)
+        apply_heading_page_starts(body)
         tree.write(document_xml, encoding="utf-8", xml_declaration=True)
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as tmp_docx:
@@ -1036,5 +975,6 @@ def move_word_toc_after_intro(docx_path: Path) -> None:
         finally:
             if tmp_docx_path.exists():
                 tmp_docx_path.unlink()
+
 
 

@@ -20,7 +20,6 @@ from generator import (
     BookConfig,
     generate_structure_bestseller,
     generate_structure_for_review,
-    modify_structure,
     regenerate_titles_bestseller,
     start_titles_job,
     start_writing,
@@ -280,7 +279,6 @@ async def generate_titles_endpoint(
         "references_has_warning": has_warning,
         "titles_regen_count": 0,
         "structure_regen_count": 0,
-        "structure_modify_count": 0,
         "current_structure": None,
         "adopted_index": None,
     }
@@ -483,71 +481,6 @@ async def regenerate_structure_endpoint(job_id: str):
 
 
 # ---------------------------------------------------------------------------
-# Step 2-c: 章立ての部分修正（非同期）
-# ---------------------------------------------------------------------------
-
-
-@app.post("/modify-structure/{job_id}")
-async def modify_structure_endpoint(job_id: str, user_instruction: str = Form(...)):
-    state = JOB_STATE.get(job_id)
-    if not state:
-        raise HTTPException(status_code=404, detail="ジョブが見つかりません。")
-    if state.get("status") != "structure_review":
-        raise HTTPException(
-            status_code=409,
-            detail=f"現在のステータス（{state.get('status')}）からは部分修正できません。",
-        )
-    if state.get("structure_modify_count", 0) >= MAX_REGEN_PER_STAGE:
-        raise HTTPException(
-            status_code=429,
-            detail=f"部分修正は {MAX_REGEN_PER_STAGE} 回までです。承認して本編に進んでください。",
-        )
-    if not user_instruction or not user_instruction.strip():
-        raise HTTPException(status_code=400, detail="修正指示が空です。")
-
-    candidates = state.get("candidates") or []
-    adopted_index = state.get("adopted_index")
-    if adopted_index is None or not 0 <= adopted_index < len(candidates):
-        raise HTTPException(status_code=400, detail="採用タイトルが特定できません。")
-    adopted = candidates[adopted_index]
-    adopted_title = adopted.get("title", "")
-    adopted_subtitle = adopted.get("subtitle", "")
-    current_structure = state.get("current_structure") or {}
-
-    cfg = _cfg_from_state(state)
-    job_dir = JOBS / job_id
-
-    state["status"] = "modifying_structure"
-    state["message"] = "章立てを部分修正中..."
-
-    def runner() -> None:
-        try:
-            new_structure = modify_structure(cfg, current_structure, user_instruction, adopted_title, adopted_subtitle)
-            (job_dir / "structure.json").write_text(
-                json.dumps(new_structure, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
-            JOB_STATE[job_id].update({
-                "status": "structure_review",
-                "message": "章立てを修正しました。確認してください。",
-                "current_structure": new_structure,
-                "structure_modify_count": JOB_STATE[job_id].get("structure_modify_count", 0) + 1,
-            })
-        except Exception as exc:  # noqa: BLE001
-            JOB_STATE[job_id].update({
-                "status": "structure_review",
-                "message": f"部分修正に失敗しました：{exc}（前回の章立てを保持しています）",
-                "trace": traceback.format_exc(),
-            })
-
-    threading.Thread(target=runner, daemon=True).start()
-    return {
-        "job_id": job_id,
-        "structure_modify_count": state.get("structure_modify_count", 0) + 1,
-        "max_regen_per_stage": MAX_REGEN_PER_STAGE,
-    }
-
-
-# ---------------------------------------------------------------------------
 # Step 3: 章立て承認 → 本編生成（バックグラウンド）
 # ---------------------------------------------------------------------------
 
@@ -617,16 +550,15 @@ async def status(job_id: str) -> JSONResponse:
         "project_name": state.get("project_name"),
         "titles_regen_count": state.get("titles_regen_count", 0),
         "structure_regen_count": state.get("structure_regen_count", 0),
-        "structure_modify_count": state.get("structure_modify_count", 0),
         "max_regen_per_stage": MAX_REGEN_PER_STAGE,
         "adopted_index": state.get("adopted_index"),
     }
     if state["status"] == "references_review":
         payload["references"] = state.get("references_payload", [])
         payload["has_warning"] = state.get("references_has_warning", False)
-    if state["status"] in ("title_picked", "generating_structure", "structure_review", "regenerating_structure", "modifying_structure", "running"):
+    if state["status"] in ("title_picked", "generating_structure", "structure_review", "regenerating_structure", "running"):
         payload["candidates"] = state.get("candidates", [])
-    if state["status"] in ("structure_review", "regenerating_structure", "modifying_structure", "running"):
+    if state["status"] in ("structure_review", "regenerating_structure", "running"):
         payload["structure"] = state.get("current_structure")
     if state["status"] == "done":
         payload["result"] = state["result"]
@@ -694,3 +626,4 @@ if __name__ == "__main__":
 
     port = int(os.environ.get("PORT", "8765"))
     uvicorn.run("app:app", host="127.0.0.1", port=port, reload=False)
+
