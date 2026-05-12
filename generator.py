@@ -741,6 +741,26 @@ def apply_period_breaks(text: str) -> str:
     return result
 
 
+def _is_markdown_spacing_heading(line: str) -> bool:
+    stripped = line.strip()
+    return bool(re.match(r"^#{1,3}\s+\S", stripped))
+
+
+def ensure_markdown_heading_spacing(text: str) -> str:
+    lines = text.split("\n")
+    out: list[str] = []
+    for idx, line in enumerate(lines):
+        out.append(line)
+        if _is_markdown_spacing_heading(line):
+            next_line = lines[idx + 1] if idx + 1 < len(lines) else ""
+            if next_line.strip():
+                out.append("")
+    result = "\n".join(out)
+    if not result.endswith("\n"):
+        result += "\n"
+    return result
+
+
 def build_merged_md(
     title: str, subtitle: str, author: str, manuscript_dir: Path, structure: dict
 ) -> str:
@@ -775,7 +795,8 @@ def build_merged_md(
 
     body = "\n\n".join(body_parts)
     body_with_breaks = insert_pagebreaks_before_headings(body)
-    return clean_public_manuscript(cover + body_with_breaks + "\n")
+    merged = clean_public_manuscript(cover + body_with_breaks + "\n")
+    return ensure_markdown_heading_spacing(merged)
 
 
 def convert_to_docx(md_path: Path, docx_path: Path) -> None:
@@ -804,6 +825,9 @@ def convert_to_docx(md_path: Path, docx_path: Path) -> None:
 WORD_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 ET.register_namespace("w", WORD_NS)
 
+HEADING_AFTER_SPACING_STYLES = {"Title", "TOCHeading", "Heading1", "Heading2", "Heading3"}
+HEADING_AFTER_SPACING_TWIPS = "80"
+
 
 def _w_tag(name: str) -> str:
     return f"{{{WORD_NS}}}{name}"
@@ -821,6 +845,26 @@ def _paragraph_style(node: ET.Element) -> str:
     if p_style is None:
         return ""
     return p_style.attrib.get(_w_tag("val"), "")
+
+
+def _ensure_heading_after_spacing(paragraph: ET.Element) -> None:
+    if paragraph.tag != _w_tag("p"):
+        return
+    if _paragraph_style(paragraph) not in HEADING_AFTER_SPACING_STYLES:
+        return
+    p_pr = paragraph.find(_w_tag("pPr"))
+    if p_pr is None:
+        p_pr = ET.Element(_w_tag("pPr"))
+        paragraph.insert(0, p_pr)
+    spacing = p_pr.find(_w_tag("spacing"))
+    if spacing is None:
+        spacing = ET.SubElement(p_pr, _w_tag("spacing"))
+    spacing.set(_w_tag("after"), HEADING_AFTER_SPACING_TWIPS)
+
+
+def apply_heading_after_spacing(body: ET.Element) -> None:
+    for paragraph in body.iter(_w_tag("p")):
+        _ensure_heading_after_spacing(paragraph)
 
 
 def _is_heading1(node: ET.Element) -> bool:
@@ -856,6 +900,7 @@ def _make_word_toc_sdt() -> ET.Element:
     heading_p = ET.SubElement(sdt_content, _w_tag("p"))
     heading_p_pr = ET.SubElement(heading_p, _w_tag("pPr"))
     ET.SubElement(heading_p_pr, _w_tag("pStyle"), {_w_tag("val"): "TOCHeading"})
+    ET.SubElement(heading_p_pr, _w_tag("spacing"), {_w_tag("after"): HEADING_AFTER_SPACING_TWIPS})
     heading_r = ET.SubElement(heading_p, _w_tag("r"))
     heading_t = ET.SubElement(heading_r, _w_tag("t"))
     heading_t.text = "Table of Contents"
@@ -920,6 +965,7 @@ def move_word_toc_after_intro(docx_path: Path) -> None:
                 insert_idx -= 1
             body.insert(insert_idx, toc_node)
 
+        apply_heading_after_spacing(body)
         tree.write(document_xml, encoding="utf-8", xml_declaration=True)
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as tmp_docx:
