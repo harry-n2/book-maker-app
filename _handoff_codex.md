@@ -16,6 +16,15 @@
 - DOCX `Title`, `TOCHeading`, `Heading1`, `Heading2`, and `Heading3` paragraphs must keep direct `w:spacing w:after="80"`.
 - This covers the title, intro heading, Word TOC heading, H1, H2, H3, and outro heading. Do not remove or weaken this rule.
 
+## Heading Page Break Rule
+
+- Preserve heading-after page breaks in both Markdown and DOCX.
+- `build_merged_md()` must add the OpenXML page-break raw block after cleanup and Markdown heading spacing, using `insert_pagebreaks_after_headings()`.
+- Keep the page break after Markdown H1-H3 lines. Do not restore the old before-heading behavior.
+- `move_word_toc_after_intro()` must run `apply_heading_after_pagebreaks()` before writing `word/document.xml`.
+- DOCX `Title`, `TOCHeading`, `Heading1`, `Heading2`, and `Heading3` paragraphs must have a page-break paragraph immediately after them unless one already exists.
+- This covers the title, intro heading, Word TOC heading, H1, H2, H3, and outro heading. Do not remove or weaken this rule.
+
 ## Non-Negotiable Output Rules
 
 - Do not create a manual Markdown TOC.
