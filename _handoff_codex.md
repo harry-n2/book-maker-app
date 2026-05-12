@@ -47,3 +47,10 @@ Smoke checks:
 - `convert_to_docx()` still passes `--toc --toc-depth=3`.
 - Generated DOCX contains a Word `w:sdt` TOC block with `w:instrText` containing `TOC`.
 - That TOC block appears after the `はじめに` section body and before the next `Heading1`.
+
+## Latest Deployment
+
+- Implementation commit: `336d193 fix: keep word toc after introduction`
+- Production deployment URL: `https://bookmaker-108hybldc-harry-n2.vercel.app`
+- Vercel inspect URL: `https://vercel.com/harry-n2/book_maker_app/E1BfatQLqA8TjGrQsJFpnWCLnViz`
+- Production alias: `https://bookmakerapp.vercel.app`

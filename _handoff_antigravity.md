@@ -40,3 +40,10 @@ Check:
 - No manual TOC helper remains in `generator.py`.
 - DOCX still contains a Word TOC field.
 - DOCX TOC is placed after the intro body, not under the intro heading and not after the cover.
+
+## Latest Deployment
+
+- Implementation commit: `336d193 fix: keep word toc after introduction`
+- Production deployment URL: `https://bookmaker-108hybldc-harry-n2.vercel.app`
+- Vercel inspect URL: `https://vercel.com/harry-n2/book_maker_app/E1BfatQLqA8TjGrQsJFpnWCLnViz`
+- Production alias: `https://bookmakerapp.vercel.app`
