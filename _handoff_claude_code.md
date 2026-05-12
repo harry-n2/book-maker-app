@@ -1,4 +1,4 @@
-# Handoff for Claude Code
+﻿# Handoff for Claude Code
 
 ## Project
 
@@ -44,6 +44,6 @@ Do not revert this back to a manual Markdown TOC.
 ## Latest Deployment
 
 - Implementation commit: `336d193 fix: keep word toc after introduction`
-- Production deployment URL: `https://bookmaker-108hybldc-harry-n2.vercel.app`
-- Vercel inspect URL: `https://vercel.com/harry-n2/book_maker_app/E1BfatQLqA8TjGrQsJFpnWCLnViz`
+- Production deployment URL: `https://bookmaker-ecmw79byx-harry-n2.vercel.app`
+- Vercel inspect URL: `https://vercel.com/harry-n2/book_maker_app/96QurVkTG6wbxKrp292qw34xbo3U`
 - Production alias: `https://bookmakerapp.vercel.app`
