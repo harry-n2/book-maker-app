@@ -7,32 +7,23 @@
 - Branch: `main`
 - Production alias: `https://bookmakerapp.vercel.app`
 
-## Latest Change
+## Strict Rules
 
-The generated book must always contain a table of contents directly under `はじめに`.
+- Word形式の目次を使う。Markdown手動目次は禁止。
+- `book_full.md` に `## 目次` を挿入しない。
+- `convert_to_docx()` の `--toc --toc-depth=3` を削除しない。
+- 目次は `はじめに` 本文の文末直後、次章見出しの前に置く。
+- Pandocが生成したWord TOCフィールドの `w:sdt` ブロックがある場合は、それを移動するだけにする。
+- Pandocが無くローカルフォールバックでTOCが無い場合だけ、DOCX XMLに同等のWord TOCフィールドを補完する。Markdown目次は禁止。
+- `apply_period_breaks()` の見出し直後空行は維持する。
+- 展開折り畳み式の部分修正UIは再追加しない。
 
-Implementation details:
+## Implementation Notes
 
-- `generator.py` now builds a manual TOC from `structure.json`.
-- The TOC is inserted immediately after the first intro H1.
-- Intro/outro H1s are normalized to `# はじめに` and `# おわりに`.
-- Main chapter H1s are normalized from the approved chapter structure.
-- Pandoc `--toc` was removed to prevent the TOC from appearing before the intro.
-
-UI correction:
-
-- The expand/collapse-style partial-edit panel was removed.
-- `templates/index.html` no longer includes the modify panel controls.
-- `static/app.js` no longer binds modify-panel open/cancel/submit handlers.
-- `static/style.css` no longer includes modify-panel styling.
-
-## Preserve
-
-- Manual TOC directly under `はじめに`.
-- Existing manuscript artifact cleanup.
-- Per-author profile fields from UI to API to prompt rendering.
-- Optional blank profile fields.
-- Reference material priority over generic assumptions.
+- `generator.py` contains `move_word_toc_after_intro(docx_path)`.
+- The function extracts the DOCX, parses `word/document.xml`, finds the TOC block via `w:instrText` containing `TOC`, removes it from its original position, and inserts it after the intro section.
+- `_make_word_toc_sdt()` is fallback-only for environments without a system Pandoc.
+- `reference_v8.docx` / `reference_v7.docx` selection remains unchanged.
 
 ## Verify
 
@@ -41,11 +32,11 @@ python -m py_compile app.py generator.py references.py _resource.py pypandoc.py
 node --check static\app.js
 ```
 
-Also verify:
+Also verify the DOCX XML order:
 
-- `## 目次` appears immediately under `# はじめに` in a merged manuscript.
-- No `open-modify-btn`, `modify-panel`, `modifyInstruction`, `cancelModifyBtn`, `submitModifyBtn`, or `openModifyBtn` UI references remain.
+- `Heading1` containing `はじめに`
+- intro body paragraphs
+- Word TOC `w:sdt`
+- next `Heading1`
 
-## Caution
-
-Do not remove the TOC again. The TOC placement under `はじめに` is mandatory.
+Do not revert this back to a manual Markdown TOC.

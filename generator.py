@@ -1,13 +1,17 @@
-﻿"""書籍生成コア（v2：2段階UX・H1=4〜5、H2=2〜3、H3 任意）。"""
+"""書籍生成コア（v2：2段階UX・H1=4〜5、H2=2〜3、H3 任意）。"""
 
 from __future__ import annotations
 
 import json
 import re
+import shutil
+import tempfile
 import time
+import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
+from xml.etree import ElementTree as ET
 
 import google.generativeai as genai
 
@@ -737,51 +741,6 @@ def apply_period_breaks(text: str) -> str:
     return result
 
 
-def _clean_heading_text(value: str) -> str:
-    value = re.sub(r"^\s*#*\s*", "", value or "").strip()
-    value = re.sub(r"^\s*\u7b2c\d+\u7ae0\s*", "", value).strip()
-    value = re.sub(r"^(\u306f\u3058\u3081\u306b|\u304a\u308f\u308a\u306b)\s+", "", value).strip()
-    value = re.sub(r"^[\s:：\-‐ー－、。・/／]+", "", value).strip()
-    return value
-
-
-def _section_heading(label: str, title: str, include_title: bool = True) -> str:
-    title = _clean_heading_text(title)
-    if not include_title or not title or title == label:
-        return f"# {label}"
-    return f"# {label} {title}"
-
-
-def _replace_first_h1(text: str, heading: str) -> str:
-    lines = text.split("\n")
-    for idx, line in enumerate(lines):
-        if re.match(r"^#\s+", line):
-            lines[idx] = heading
-            return "\n".join(lines)
-    return heading + "\n\n" + text.lstrip()
-
-
-def _build_manual_toc(structure: dict) -> str:
-    entries: list[str] = ["## \u76ee\u6b21", ""]
-    entries.append(f"1. \u306f\u3058\u3081\u306b")
-    for idx, ch in enumerate(structure.get("chapters", []), 2):
-        label = f"\u7b2c{idx - 1}\u7ae0"
-        title = _clean_heading_text(ch.get("title", ""))
-        entries.append(f"{idx}. {label} {title}".rstrip())
-    outro_index = len(structure.get("chapters", [])) + 2
-    entries.append(f"{outro_index}. \u304a\u308f\u308a\u306b")
-    entries.append(f"{outro_index + 1}. \u5dfb\u672b\u6848\u5185")
-    return "\n".join(entries)
-
-
-def _insert_toc_after_first_h1(text: str, toc: str) -> str:
-    lines = text.split("\n")
-    for idx, line in enumerate(lines):
-        if re.match(r"^#\s+", line):
-            return "\n".join(lines[: idx + 1] + ["", toc, ""] + lines[idx + 1 :])
-    return toc + "\n\n" + text
-
-
 def build_merged_md(
     title: str, subtitle: str, author: str, manuscript_dir: Path, structure: dict
 ) -> str:
@@ -811,19 +770,6 @@ def build_merged_md(
         if not fpath.exists():
             continue
         text = fpath.read_text(encoding="utf-8")
-        if fid == intro.get("id"):
-            text = _replace_first_h1(text, _section_heading("\u306f\u3058\u3081\u306b", intro.get("title", ""), False))
-            text = _insert_toc_after_first_h1(text, _build_manual_toc(structure))
-        elif fid == outro.get("id"):
-            text = _replace_first_h1(text, _section_heading("\u304a\u308f\u308a\u306b", outro.get("title", ""), False))
-        else:
-            for idx, ch in enumerate(chapters, 1):
-                if fid == ch.get("id"):
-                    text = _replace_first_h1(
-                        text,
-                        _section_heading(f"\u7b2c{idx}\u7ae0", ch.get("title", "")),
-                    )
-                    break
         text = apply_period_breaks(text)
         body_parts.append(text.strip())
 
@@ -835,7 +781,7 @@ def build_merged_md(
 def convert_to_docx(md_path: Path, docx_path: Path) -> None:
     import pypandoc
 
-    extra_args = ["--standalone"]
+    extra_args = ["--standalone", "--toc", "--toc-depth=3"]
     # v1.2: 視認性向上版（コピペ枠・ケーススタディBOX のスタイル拡張）を優先。
     # v8 が無ければ v7 にフォールバック、それも無ければ Pandoc 既定。
     ref_v8 = _resource.resource("templates", "reference_v8.docx")
@@ -852,5 +798,140 @@ def convert_to_docx(md_path: Path, docx_path: Path) -> None:
         format="markdown+raw_attribute",
         extra_args=extra_args,
     )
+    move_word_toc_after_intro(docx_path)
+
+
+WORD_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+ET.register_namespace("w", WORD_NS)
+
+
+def _w_tag(name: str) -> str:
+    return f"{{{WORD_NS}}}{name}"
+
+
+def _node_text(node: ET.Element) -> str:
+    return "".join(t.text or "" for t in node.iter(_w_tag("t")))
+
+
+def _paragraph_style(node: ET.Element) -> str:
+    p_pr = node.find(_w_tag("pPr"))
+    if p_pr is None:
+        return ""
+    p_style = p_pr.find(_w_tag("pStyle"))
+    if p_style is None:
+        return ""
+    return p_style.attrib.get(_w_tag("val"), "")
+
+
+def _is_heading1(node: ET.Element) -> bool:
+    return node.tag == _w_tag("p") and _paragraph_style(node) == "Heading1"
+
+
+def _is_pagebreak_paragraph(node: ET.Element) -> bool:
+    if node.tag != _w_tag("p"):
+        return False
+    for br in node.iter(_w_tag("br")):
+        if br.attrib.get(_w_tag("type")) == "page":
+            return True
+    return False
+
+
+def _is_toc_sdt(node: ET.Element) -> bool:
+    if node.tag != _w_tag("sdt"):
+        return False
+    for instr in node.iter(_w_tag("instrText")):
+        if "TOC" in (instr.text or ""):
+            return True
+    return False
+
+
+def _make_word_toc_sdt() -> ET.Element:
+    sdt = ET.Element(_w_tag("sdt"))
+    sdt_pr = ET.SubElement(sdt, _w_tag("sdtPr"))
+    doc_part_obj = ET.SubElement(sdt_pr, _w_tag("docPartObj"))
+    ET.SubElement(doc_part_obj, _w_tag("docPartGallery"), {_w_tag("val"): "Table of Contents"})
+    ET.SubElement(doc_part_obj, _w_tag("docPartUnique"))
+
+    sdt_content = ET.SubElement(sdt, _w_tag("sdtContent"))
+    heading_p = ET.SubElement(sdt_content, _w_tag("p"))
+    heading_p_pr = ET.SubElement(heading_p, _w_tag("pPr"))
+    ET.SubElement(heading_p_pr, _w_tag("pStyle"), {_w_tag("val"): "TOCHeading"})
+    heading_r = ET.SubElement(heading_p, _w_tag("r"))
+    heading_t = ET.SubElement(heading_r, _w_tag("t"))
+    heading_t.text = "Table of Contents"
+
+    field_p = ET.SubElement(sdt_content, _w_tag("p"))
+    field_r = ET.SubElement(field_p, _w_tag("r"))
+    ET.SubElement(field_r, _w_tag("fldChar"), {_w_tag("fldCharType"): "begin", _w_tag("dirty"): "true"})
+    instr = ET.SubElement(field_r, _w_tag("instrText"), {"{http://www.w3.org/XML/1998/namespace}space": "preserve"})
+    instr.text = 'TOC \\o "1-3" \\h \\z \\u'
+    ET.SubElement(field_r, _w_tag("fldChar"), {_w_tag("fldCharType"): "separate"})
+    ET.SubElement(field_r, _w_tag("fldChar"), {_w_tag("fldCharType"): "end"})
+    return sdt
+
+
+def _is_intro_heading(node: ET.Element) -> bool:
+    return "\u306f\u3058\u3081\u306b" in _node_text(node).strip()
+
+
+def move_word_toc_after_intro(docx_path: Path) -> None:
+    """Move Pandoc's Word TOC field after the intro body.
+
+    The TOC remains the Word/Pandoc `w:sdt` field generated by `--toc`.
+    This function changes only its position in `word/document.xml`.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        with zipfile.ZipFile(docx_path, "r") as zin:
+            zin.extractall(tmp_path)
+
+        document_xml = tmp_path / "word" / "document.xml"
+        tree = ET.parse(document_xml)
+        root = tree.getroot()
+        body = root.find(_w_tag("body"))
+        if body is None:
+            return
+
+        toc_node: ET.Element | None = None
+        for child in list(body):
+            if _is_toc_sdt(child):
+                toc_node = child
+                body.remove(child)
+                break
+        if toc_node is None:
+            toc_node = _make_word_toc_sdt()
+
+        children = list(body)
+        intro_idx: int | None = None
+        for idx, child in enumerate(children):
+            if _is_heading1(child) and _is_intro_heading(child):
+                intro_idx = idx
+                break
+
+        if intro_idx is None:
+            body.insert(0, toc_node)
+        else:
+            insert_idx = len(children)
+            for idx in range(intro_idx + 1, len(children)):
+                if _is_heading1(children[idx]):
+                    insert_idx = idx
+                    break
+            while insert_idx > intro_idx + 1 and _is_pagebreak_paragraph(children[insert_idx - 1]):
+                insert_idx -= 1
+            body.insert(insert_idx, toc_node)
+
+        tree.write(document_xml, encoding="utf-8", xml_declaration=True)
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as tmp_docx:
+            tmp_docx_path = Path(tmp_docx.name)
+        try:
+            with zipfile.ZipFile(tmp_docx_path, "w", zipfile.ZIP_DEFLATED) as zout:
+                for file_path in tmp_path.rglob("*"):
+                    if file_path.is_file():
+                        zout.write(file_path, file_path.relative_to(tmp_path).as_posix())
+            shutil.move(str(tmp_docx_path), docx_path)
+        finally:
+            if tmp_docx_path.exists():
+                tmp_docx_path.unlink()
 
 
