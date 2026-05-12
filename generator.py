@@ -576,6 +576,8 @@ def clean_public_manuscript(text: str) -> str:
     text = re.sub(r"(?m)^(#+\s*)?(\u304a\u308f\u308a\u306b)(?:\s+\2)+\s*$", r"\1\2", text)
     text = re.sub(r"(\u306f\u3058\u3081\u306b)\s+\1", r"\1", text)
     text = re.sub(r"(\u304a\u308f\u308a\u306b)\s+\1", r"\1", text)
+    text = re.sub(r"(?m)^(#{1,3}\s*)[,\u3001\u3002\uFF0C\uFF0E\uFF1A\uFF1B]+\s*", r"\1", text)
+    text = re.sub(r"(?m)^(#{1,3}\s*)(?:[,\u3001\u3002\uFF0C\uFF0E\uFF1A\uFF1B]\s*)+", r"\1", text)
     text = re.sub(r"(?im)^.*(ChatGPT|Gemini|AI\s*generated).*$", "", text)
     text = re.sub(r"(?i)AI生成", "", text)
     text = re.sub(r"(?i)AIが作成", "", text)
@@ -764,6 +766,8 @@ ET.register_namespace("w", WORD_NS)
 
 HEADING_AFTER_SPACING_STYLES = {"Title", "TOCHeading", "Heading1", "Heading2", "Heading3"}
 HEADING_AFTER_SPACING_TWIPS = "80"
+AUTO_PAGE_LINE_BUDGET = 34
+AUTO_PAGE_REMAINING_THRESHOLD = 6
 WORD_STYLE_MAP = {
     "Title": "BookTitle",
     "TOCHeading": "BookTOCHeading",
@@ -772,6 +776,7 @@ WORD_STYLE_MAP = {
     "Heading3": "BookHeading3",
 }
 WORD_TOC_FIELD_INSTRUCTION = 'TOC \\h \\z \\t "BookHeading1,1,BookHeading2,2,BookHeading3,3"'
+WORD_SETTINGS_UPDATE_FIELDS = True
 
 
 def _w_tag(name: str) -> str:
@@ -810,6 +815,67 @@ def _ensure_heading_after_spacing(paragraph: ET.Element) -> None:
 def apply_heading_after_spacing(body: ET.Element) -> None:
     for paragraph in body.iter(_w_tag("p")):
         _ensure_heading_after_spacing(paragraph)
+
+
+def _ensure_page_break_before(paragraph: ET.Element) -> None:
+    if paragraph.tag != _w_tag("p"):
+        return
+    p_pr = paragraph.find(_w_tag("pPr"))
+    if p_pr is None:
+        p_pr = ET.Element(_w_tag("pPr"))
+        paragraph.insert(0, p_pr)
+    if p_pr.find(_w_tag("pageBreakBefore")) is None:
+        ET.SubElement(p_pr, _w_tag("pageBreakBefore"))
+
+
+def _estimated_paragraph_units(paragraph: ET.Element) -> int:
+    style = _paragraph_style(paragraph)
+    text = re.sub(r"\s+", " ", _node_text(paragraph)).strip()
+    if not text:
+        return 0
+    if style == "BookTitle":
+        return 4
+    if style == "BookTOCHeading":
+        return 2
+    if style == "BookHeading1":
+        return 3
+    if style in {"BookHeading2", "BookHeading3"}:
+        return 2
+    return max(1, (len(text) + 39) // 40)
+
+
+def _estimated_toc_units(sdt: ET.Element) -> int:
+    if not _is_toc_sdt(sdt):
+        return 0
+    total = 0
+    for paragraph in sdt.iter(_w_tag("p")):
+        total += max(1, _estimated_paragraph_units(paragraph))
+    return max(6, min(total, 12))
+
+
+def apply_auto_heading_page_control(body: ET.Element) -> None:
+    used_units = 0
+    for child in list(body):
+        if child.tag == _w_tag("p"):
+            style = _paragraph_style(child)
+            units = _estimated_paragraph_units(child)
+            if style == "BookHeading1":
+                used_units = units
+                continue
+            if style in {"BookHeading2", "BookHeading3"}:
+                if used_units and AUTO_PAGE_LINE_BUDGET - used_units <= AUTO_PAGE_REMAINING_THRESHOLD:
+                    _ensure_page_break_before(child)
+                    used_units = 0
+                elif used_units and used_units + units > AUTO_PAGE_LINE_BUDGET:
+                    _ensure_page_break_before(child)
+                    used_units = 0
+            used_units += units
+            if used_units >= AUTO_PAGE_LINE_BUDGET:
+                used_units = 0
+        elif child.tag == _w_tag("sdt") and _is_toc_sdt(child):
+            used_units += _estimated_toc_units(child)
+            if used_units >= AUTO_PAGE_LINE_BUDGET:
+                used_units = 0
 
 
 def _remove_outline_level(style: ET.Element) -> None:
@@ -891,6 +957,13 @@ def _rewrite_word_toc_instruction(toc_node: ET.Element) -> None:
         if "TOC" in (instr.text or ""):
             instr.text = WORD_TOC_FIELD_INSTRUCTION
             return
+
+
+def _enable_word_update_fields(settings_root: ET.Element) -> None:
+    update_fields = settings_root.find(_w_tag("updateFields"))
+    if update_fields is None:
+        update_fields = ET.SubElement(settings_root, _w_tag("updateFields"))
+    update_fields.set(_w_tag("val"), "true")
 
 
 def remove_pagebreak_paragraphs(container: ET.Element) -> None:
@@ -1004,12 +1077,19 @@ def move_word_toc_after_intro(docx_path: Path) -> None:
         remove_pagebreak_paragraphs(body)
         apply_heading_after_spacing(body)
         _rewrite_paragraph_styles(body)
+        apply_auto_heading_page_control(body)
         styles_xml = tmp_path / "word" / "styles.xml"
         if styles_xml.exists():
             styles_tree = ET.parse(styles_xml)
             styles_root = styles_tree.getroot()
             _install_custom_word_styles(styles_root)
             styles_tree.write(styles_xml, encoding="utf-8", xml_declaration=True)
+        settings_xml = tmp_path / "word" / "settings.xml"
+        if settings_xml.exists():
+            settings_tree = ET.parse(settings_xml)
+            settings_root = settings_tree.getroot()
+            _enable_word_update_fields(settings_root)
+            settings_tree.write(settings_xml, encoding="utf-8", xml_declaration=True)
         tree.write(document_xml, encoding="utf-8", xml_declaration=True)
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as tmp_docx:

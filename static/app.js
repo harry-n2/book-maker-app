@@ -28,6 +28,11 @@
   const structureTree = $("structure-tree");
   const approveStructureBtn = $("approve-structure-btn");
   const regenStructureBtn = $("regen-structure-btn");
+  const openModifyBtn = $("open-modify-btn");
+  const modifyPanel = $("modify-panel");
+  const modifyInstruction = $("modify-instruction");
+  const cancelModifyBtn = $("cancel-modify-btn");
+  const submitModifyBtn = $("submit-modify-btn");
   const structureRegenNote = $("structure-regen-note");
   const progressFill = $("progress-fill");
   const progressPct = $("progress-pct");
@@ -56,6 +61,7 @@
   let maxRegenPerStage = 3;
   let titlesRegenCount = 0;
   let structureRegenCount = 0;
+  let structureModifyCount = 0;
 
   // -------------------------------------------------------------------
   // UI helpers
@@ -364,9 +370,10 @@
   }
   function updateStructureRegenNote() {
     const regenRemain = Math.max(0, maxRegenPerStage - structureRegenCount);
-    structureRegenNote.textContent =
-      `構成再生成 残り ${regenRemain} 回（最大 ${maxRegenPerStage} 回まで）`;
+    const modifyRemain = Math.max(0, maxRegenPerStage - structureModifyCount);
+    structureRegenNote.textContent = `???????? ${regenRemain} ? / ??????? ${modifyRemain} ??? ${maxRegenPerStage} ????`;
     regenStructureBtn.disabled = regenRemain <= 0;
+    openModifyBtn.disabled = modifyRemain <= 0;
   }
 
   // -------------------------------------------------------------------
@@ -397,6 +404,11 @@
   }
   async function regenerateStructure(jobId) {
     return postJson(`/regenerate-structure/${jobId}`);
+  }
+  async function modifyStructure(jobId, instruction) {
+    const fd = new FormData();
+    fd.append("user_instruction", instruction);
+    return postJson(`/modify-structure/${jobId}`, fd);
   }
   async function approveStructure(jobId) {
     return postJson(`/approve-structure/${jobId}`);
@@ -448,6 +460,7 @@
     if (typeof state.max_regen_per_stage === "number") maxRegenPerStage = state.max_regen_per_stage;
     if (typeof state.titles_regen_count === "number") titlesRegenCount = state.titles_regen_count;
     if (typeof state.structure_regen_count === "number") structureRegenCount = state.structure_regen_count;
+    if (typeof state.structure_modify_count === "number") structureModifyCount = state.structure_modify_count;
 
     if (state.status === "generating_structure") {
       hideAllSections();
@@ -465,6 +478,8 @@
       show(structureReviewSection);
       renderStructure(currentStructure);
       updateStructureRegenNote();
+      hide(modifyPanel);
+      modifyInstruction.value = "";
       resetStructureButtons();
     } else if (state.status === "running") {
       hideAllSections();
@@ -661,6 +676,37 @@
   // -------------------------------------------------------------------
   // 章立て：再生成（ベストセラー版）
   // -------------------------------------------------------------------
+  openModifyBtn.addEventListener("click", () => {
+    show(modifyPanel);
+    modifyInstruction.focus();
+  });
+
+  cancelModifyBtn.addEventListener("click", () => {
+    hide(modifyPanel);
+    modifyInstruction.value = "";
+  });
+
+  submitModifyBtn.addEventListener("click", async () => {
+    if (!currentJobId) return;
+    const instruction = modifyInstruction.value.trim();
+    if (!instruction) {
+      alert("??????????????");
+      return;
+    }
+    submitModifyBtn.disabled = true;
+    submitModifyBtn.textContent = "???...";
+    try {
+      await modifyStructure(currentJobId, instruction);
+      hide(modifyPanel);
+      modifyInstruction.value = "";
+      startPolling(currentJobId);
+    } catch (err) {
+      alert(err.message || "????????????");
+      submitModifyBtn.disabled = false;
+      submitModifyBtn.textContent = "???????";
+    }
+  });
+
   regenStructureBtn.addEventListener("click", async () => {
     if (!currentJobId) return;
     if (!confirm("章立てをベストセラー版で再生成します。現在の章立ては上書きされます。よろしいですか？")) return;
