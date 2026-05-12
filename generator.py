@@ -8,6 +8,7 @@ import shutil
 import tempfile
 import time
 import zipfile
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
@@ -763,8 +764,14 @@ ET.register_namespace("w", WORD_NS)
 
 HEADING_AFTER_SPACING_STYLES = {"Title", "TOCHeading", "Heading1", "Heading2", "Heading3"}
 HEADING_AFTER_SPACING_TWIPS = "80"
-HEADING_PAGE_START_STYLES = {"Title", "TOCHeading", "Heading1", "Heading2", "Heading3"}
-WORD_TOC_FIELD_INSTRUCTION = 'TOC \\h \\z \\t "Heading1,1,Heading2,2,Heading3,3"'
+WORD_STYLE_MAP = {
+    "Title": "BookTitle",
+    "TOCHeading": "BookTOCHeading",
+    "Heading1": "BookHeading1",
+    "Heading2": "BookHeading2",
+    "Heading3": "BookHeading3",
+}
+WORD_TOC_FIELD_INSTRUCTION = 'TOC \\h \\z \\t "BookHeading1,1,BookHeading2,2,BookHeading3,3"'
 
 
 def _w_tag(name: str) -> str:
@@ -805,24 +812,6 @@ def apply_heading_after_spacing(body: ET.Element) -> None:
         _ensure_heading_after_spacing(paragraph)
 
 
-def _ensure_heading_page_start(paragraph: ET.Element) -> None:
-    if paragraph.tag != _w_tag("p"):
-        return
-    if _paragraph_style(paragraph) not in HEADING_PAGE_START_STYLES:
-        return
-    p_pr = paragraph.find(_w_tag("pPr"))
-    if p_pr is None:
-        p_pr = ET.Element(_w_tag("pPr"))
-        paragraph.insert(0, p_pr)
-    if p_pr.find(_w_tag("pageBreakBefore")) is None:
-        ET.SubElement(p_pr, _w_tag("pageBreakBefore"))
-
-
-def apply_heading_page_starts(body: ET.Element) -> None:
-    for paragraph in body.iter(_w_tag("p")):
-        _ensure_heading_page_start(paragraph)
-
-
 def _remove_outline_level(style: ET.Element) -> None:
     p_pr = style.find(_w_tag("pPr"))
     if p_pr is None:
@@ -832,18 +821,76 @@ def _remove_outline_level(style: ET.Element) -> None:
         p_pr.remove(outline)
 
 
+def _style_attr(style: ET.Element, tag: str) -> ET.Element | None:
+    return style.find(_w_tag(tag))
+
+
+def _custom_style_name(style_id: str) -> str:
+    return {
+        "BookTitle": "Book Title",
+        "BookTOCHeading": "Book TOC Heading",
+        "BookHeading1": "Book Heading 1",
+        "BookHeading2": "Book Heading 2",
+        "BookHeading3": "Book Heading 3",
+    }[style_id]
+
+
+def _customize_style(source_style: ET.Element, new_style_id: str) -> ET.Element:
+    style = deepcopy(source_style)
+    style.set(_w_tag("styleId"), new_style_id)
+
+    name = _style_attr(style, "name")
+    if name is None:
+        name = ET.SubElement(style, _w_tag("name"))
+    name.set(_w_tag("val"), _custom_style_name(new_style_id))
+
+    for tag in ("link", "uiPriority", "semiHidden", "unhideWhenUsed", "qFormat", "rsid"):
+        elem = _style_attr(style, tag)
+        if elem is not None:
+            style.remove(elem)
+
+    based_on = _style_attr(style, "basedOn")
+    if based_on is not None:
+        based_on.set(_w_tag("val"), "DefaultParagraphFont" if new_style_id == "BookTitle" else "Normal")
+
+    p_pr = _style_attr(style, "pPr")
+    if p_pr is not None:
+        outline = p_pr.find(_w_tag("outlineLvl"))
+        if outline is not None:
+            p_pr.remove(outline)
+    return style
+
+
+def _install_custom_word_styles(styles_root: ET.Element) -> None:
+    originals = {
+        style.attrib.get(_w_tag("styleId"), ""): style
+        for style in styles_root.findall(_w_tag("style"))
+    }
+    for source_id, custom_id in WORD_STYLE_MAP.items():
+        source_style = originals.get(source_id)
+        if source_style is None:
+            continue
+        styles_root.append(_customize_style(source_style, custom_id))
+
+
+def _rewrite_paragraph_styles(body: ET.Element) -> None:
+    for paragraph in body.iter(_w_tag("p")):
+        p_pr = paragraph.find(_w_tag("pPr"))
+        if p_pr is None:
+            continue
+        p_style = p_pr.find(_w_tag("pStyle"))
+        if p_style is None:
+            continue
+        current = p_style.attrib.get(_w_tag("val"), "")
+        if current in WORD_STYLE_MAP:
+            p_style.set(_w_tag("val"), WORD_STYLE_MAP[current])
+
+
 def _rewrite_word_toc_instruction(toc_node: ET.Element) -> None:
     for instr in toc_node.iter(_w_tag("instrText")):
         if "TOC" in (instr.text or ""):
             instr.text = WORD_TOC_FIELD_INSTRUCTION
             return
-
-
-def _remove_heading_outline_levels(styles_root: ET.Element) -> None:
-    for style in styles_root.findall(_w_tag("style")):
-        style_id = style.attrib.get(_w_tag("styleId"), "")
-        if style_id in {"TOCHeading", "Heading1", "Heading2", "Heading3"}:
-            _remove_outline_level(style)
 
 
 def remove_pagebreak_paragraphs(container: ET.Element) -> None:
@@ -956,12 +1003,12 @@ def move_word_toc_after_intro(docx_path: Path) -> None:
 
         remove_pagebreak_paragraphs(body)
         apply_heading_after_spacing(body)
-        apply_heading_page_starts(body)
+        _rewrite_paragraph_styles(body)
         styles_xml = tmp_path / "word" / "styles.xml"
         if styles_xml.exists():
             styles_tree = ET.parse(styles_xml)
             styles_root = styles_tree.getroot()
-            _remove_heading_outline_levels(styles_root)
+            _install_custom_word_styles(styles_root)
             styles_tree.write(styles_xml, encoding="utf-8", xml_declaration=True)
         tree.write(document_xml, encoding="utf-8", xml_declaration=True)
 

@@ -9,16 +9,14 @@
 
 ## Strict Rules
 
-- Word形式の目次を使う。Markdown手動目次は禁止。
-- `book_full.md` に `## 目次` を挿入しない。
-- `convert_to_docx()` の `--toc --toc-depth=3` を削除しない。
-- 目次は `はじめに` 本文の文末直後、次章見出しの前に置く。
-- Pandocが生成したWord TOCフィールドの `w:sdt` ブロックがある場合は、それを移動するだけにする。
-- Pandocが無くローカルフォールバックでTOCが無い場合だけ、DOCX XMLに同等のWord TOCフィールドを補完する。Markdown目次は禁止。
-- `apply_period_breaks()` の見出し直後空行は維持する。
-- Remove `w:outlineLvl` from `Heading1`, `Heading2`, `Heading3`, and `TOCHeading`.
-- Keep the Word TOC on style mapping: `TOC \h \z \t "Heading1,1,Heading2,2,Heading3,3"`.
+- Markdown keeps normal heading spacing only. Do not emit any visible page-start marker.
+- DOCX must use custom paragraph styles: `BookTitle`, `BookTOCHeading`, `BookHeading1`, `BookHeading2`, and `BookHeading3`.
+- Do not use built-in Word heading style IDs in the final document paragraphs.
+- Do not use `pageBreakBefore` for these heading styles. That creates the excess whitespace seen in the current output.
+- Keep `w:outlineLvl` removed from the generated custom heading styles.
+- Keep the Word TOC on style mapping: `TOC \h \z \t "BookHeading1,1,BookHeading2,2,BookHeading3,3"`.
 - Keep the heading collapse controls removed from the generated Word file.
+
 ## Implementation Notes
 
 - `generator.py` contains `move_word_toc_after_intro(docx_path)`.
