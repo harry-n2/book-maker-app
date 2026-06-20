@@ -165,6 +165,7 @@ def _cfg_from_state(state: dict) -> BookConfig:
         profile_target_keywords=cfg_data.get("profile_target_keywords", []),
         profile_failure_bank=cfg_data.get("profile_failure_bank", []),
         profile_voice_types=cfg_data.get("profile_voice_types", []),
+        promo_material=cfg_data.get("promo_material", ""),
     )
 
 
@@ -208,6 +209,9 @@ async def generate_titles_endpoint(
     profile_target_keywords: str = Form(""),
     profile_failure_bank: str = Form(""),
     profile_voice_types: str = Form(""),
+    reader_pain: str = Form(""),
+    reader_change: str = Form(""),
+    promo_material: str = Form(""),
     files: list[UploadFile] = File(default=[]),
     images: list[UploadFile] = File(default=[]),
 ):
@@ -260,9 +264,16 @@ async def generate_titles_endpoint(
         encoding="utf-8",
     )
 
+    # 読者の悩み・読後の変化を想定読者の文脈に畳み込み、全工程のプロンプト(target_layer)へ反映する。
+    eff_target = target_layer.strip()
+    if reader_pain.strip():
+        eff_target += f"。読者の悩み: {reader_pain.strip()}"
+    if reader_change.strip():
+        eff_target += f"。読後に得られる変化: {reader_change.strip()}"
+
     cfg = BookConfig(
         theme=theme.strip(),
-        target_layer=target_layer.strip(),
+        target_layer=eff_target,
         author=author.strip(),
         api_key=api_key.strip(),
         references=references,
@@ -272,6 +283,7 @@ async def generate_titles_endpoint(
         profile_target_keywords=_split_profile_lines(profile_target_keywords),
         profile_failure_bank=_split_profile_lines(profile_failure_bank),
         profile_voice_types=_split_profile_lines(profile_voice_types),
+        promo_material=promo_material.strip(),
     )
 
     has_warning = any(r.get("warning") for r in references)
@@ -294,6 +306,7 @@ async def generate_titles_endpoint(
             "profile_target_keywords": cfg.profile_target_keywords,
             "profile_failure_bank": cfg.profile_failure_bank,
             "profile_voice_types": cfg.profile_voice_types,
+            "promo_material": cfg.promo_material,
         },
         "reference_count": len(references),
         "references_payload": _refs_payload(references),
@@ -617,12 +630,30 @@ async def advance_endpoint(job_id: str) -> JSONResponse:
     except Exception as exc:  # noqa: BLE001
         state.update({
             "status": "error",
-            "message": f"生成に失敗しました：{exc}",
+            "message": _friendly_error(str(exc)),
             "trace": traceback.format_exc(),
         })
 
     fresh = JOB_STATE.get(job_id) or {"status": "error", "message": "状態取得に失敗しました。"}
     return JSONResponse(_status_payload(fresh))
+
+
+def _friendly_error(raw: str) -> str:
+    """技術的なエラー文を初心者向けの日本語に変換する。"""
+    s = (raw or "").lower()
+    if "429" in s or "quota" in s or "rate" in s:
+        return (
+            "Geminiの無料枠が一時的に上限に達しました。ここまで作成した内容は保存されています。"
+            "少し時間を置いてから、もう一度この画面を開く（同じ本を選ぶ）と続きから再開できます。"
+        )
+    if "api key" in s or "api_key" in s or "permission" in s or "401" in s or "403" in s or "invalid" in s:
+        return (
+            "Gemini APIキーに問題があるようです。Google AI Studio で取得した正しいキーを、"
+            "最初の画面で貼り直してください（キーは保存されません）。"
+        )
+    if "timeout" in s or "deadline" in s:
+        return "通信がタイムアウトしました。もう一度お試しください。途中まで作成した内容は保存されています。"
+    return "生成中にエラーが発生しました。少し時間を置いてもう一度お試しください。（途中の内容は保存されています）"
 
 
 @app.get("/download/{job_id}/{filename}")

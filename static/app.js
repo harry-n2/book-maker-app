@@ -47,6 +47,48 @@
   const downloadNotebookLM = $("download-notebooklm");
   const errorMessage = $("error-message");
   const projectList = $("project-list");
+  const stepEls = [$("step-1"), $("step-2"), $("step-3")];
+  const progressChecklist = $("progress-checklist");
+  const apiKeyToggle = $("api-key-toggle");
+  const descriptionCopy = $("description-copy");
+  const copyDescriptionBtn = $("copy-description-btn");
+
+  // STEP インジケーター更新（1=入力, 2=タイトル/章立て, 3=本文/完成）
+  function setStep(n, allDone) {
+    stepEls.forEach((el, i) => {
+      if (!el) return;
+      el.classList.remove("active", "done");
+      const idx = i + 1;
+      if (allDone || idx < n) el.classList.add("done");
+      else if (idx === n) el.classList.add("active");
+    });
+  }
+
+  // 本文生成の工程チェックリスト
+  const FLOW = [
+    { key: "タイトル", label: "タイトル候補を作成" },
+    { key: "章立て", label: "章立てを作成" },
+    { key: "はじめに", label: "はじめに" },
+    { key: "第1章", label: "第1章" },
+    { key: "第2章", label: "第2章" },
+    { key: "第3章", label: "第3章" },
+    { key: "第4章", label: "第4章" },
+    { key: "おわりに", label: "おわりに" },
+    { key: "巻末", label: "巻末宣伝" },
+    { key: "紹介文", label: "Kindle紹介文" },
+    { key: "Word", label: "Wordファイル" },
+  ];
+  function renderChecklist(message, allDone) {
+    if (!progressChecklist) return;
+    let cur = -1;
+    if (message) FLOW.forEach((f, i) => { if (message.indexOf(f.key) >= 0) cur = i; });
+    progressChecklist.innerHTML = FLOW.map((f, i) => {
+      let cls = "", mark = "⬜";
+      if (allDone || i < cur) { cls = "done"; mark = "✅"; }
+      else if (i === cur) { cls = "active"; mark = "🔄"; }
+      return `<li class="${cls}"><span class="mark">${mark}</span>${f.label}</li>`;
+    }).join("");
+  }
 
   const PROJECT_STORE_KEY = "book_maker_projects_v3";
   const API_KEY_STORE = "gemini_api_key";
@@ -96,8 +138,9 @@
     titlesRegenCount = 0;
     structureRegenCount = 0;
     submitBtn.disabled = false;
-    submitBtn.textContent = "参照素材を取り込んで次へ →";
+    submitBtn.textContent = "タイトル案を作る →";
     setProgress(0, "準備中…");
+    setStep(1);
     hideAllSections();
     show(formSection);
   }
@@ -439,6 +482,15 @@
     downloadDescription.download = "book_description.md";
     downloadNotebookLM.href = `/notebooklm-export/${jobId}`;
     downloadNotebookLM.download = "book_for_notebooklm.md";
+    setStep(3, true);
+    // Kindle紹介文をコピー欄に読み込む
+    if (descriptionCopy) {
+      descriptionCopy.value = "読み込み中…";
+      fetch(`/download/${jobId}/book_description.md`)
+        .then((r) => (r.ok ? r.text() : ""))
+        .then((t) => { descriptionCopy.value = (t || "").trim() || "（紹介文の読み込みに失敗しました。上のダウンロードをご利用ください）"; })
+        .catch(() => { descriptionCopy.value = "（紹介文の読み込みに失敗しました）"; });
+    }
     hideAllSections();
     show(resultSection);
   }
@@ -474,14 +526,17 @@
     if (typeof state.structure_modify_count === "number") structureModifyCount = state.structure_modify_count;
 
     if (state.status === "generating_structure") {
+      setStep(2);
       hideAllSections();
       show(structureGeneratingSection);
       structureGeneratingMessage.textContent = state.message || "章立てを構築中…";
     } else if (state.status === "regenerating_structure") {
+      setStep(2);
       hideAllSections();
       show(structureGeneratingSection);
       structureGeneratingMessage.textContent = state.message || "章立てを更新中…";
     } else if (state.status === "structure_review") {
+      setStep(2);
       // 章立てレビュー画面はユーザー入力待ちの停止状態。ここでポーリングを止めないと、
       clearPoll();
       currentStructure = state.structure || currentStructure;
@@ -493,12 +548,16 @@
       modifyInstruction.value = "";
       resetStructureButtons();
     } else if (state.status === "running") {
+      setStep(3);
       hideAllSections();
       show(progressSection);
       setProgress(state.progress || 0, state.message || "生成中…");
+      renderChecklist(state.message || "", false);
     } else if (state.status === "done") {
       clearPoll();
+      setStep(3, true);
       setProgress(100, "完了しました。");
+      renderChecklist("", true);
       const projects = loadProjects();
       const me = projects.find((p) => p.id === currentProjectId);
       if (me) {
@@ -514,8 +573,8 @@
   }
   function resetStructureButtons() {
     approveStructureBtn.disabled = false;
-    approveStructureBtn.textContent = "1. この章立てで本編を作成 →";
-    regenStructureBtn.textContent = "2. さらにベストセラーが取れる構成で再出力";
+    approveStructureBtn.textContent = "この章立てで本文を作る →";
+    regenStructureBtn.textContent = "別の構成を出す";
   }
 
   // -------------------------------------------------------------------
@@ -527,6 +586,9 @@
     const payload = {
       theme: $("theme").value.trim(),
       target_layer: $("target_layer").value,
+      reader_pain: $("reader_pain").value.trim(),
+      reader_change: $("reader_change").value.trim(),
+      promo_material: $("promo_material").value.trim(),
       author: $("author").value.trim(),
       api_key: $("api_key").value.trim(),
       project_id: projectId,
@@ -556,7 +618,7 @@
     sessionStorage.setItem(API_KEY_STORE, payload.api_key);
 
     submitBtn.disabled = true;
-    submitBtn.textContent = "参照素材を取り込み中…";
+    submitBtn.textContent = "読み込み中…";
 
     try {
       const data = await startTitleGeneration(payload);
@@ -588,7 +650,7 @@
       showError(err.message || "送信に失敗しました。");
     } finally {
       submitBtn.disabled = false;
-      submitBtn.textContent = "参照素材を取り込んで次へ →";
+      submitBtn.textContent = "タイトル案を作る →";
     }
   });
 
@@ -674,6 +736,7 @@
         ? `参照ソース ${data.reference_count} 件を取り込んだ上で候補が ${(data.candidates || []).length} 件揃いました。`
         : `候補が ${(data.candidates || []).length} 件揃いました。お好きな1案をお選びください。`;
       updateTitlesRegenNote();
+      setStep(2);
       hideAllSections();
       show(titlePickSection);
     } catch (err) {
@@ -729,7 +792,7 @@
     } catch (err) {
       alert(err.message || "再生成に失敗しました。");
       regenStructureBtn.disabled = false;
-      regenStructureBtn.textContent = "2. さらにベストセラーが取れる構成で再出力";
+      regenStructureBtn.textContent = "別の構成を出す";
     }
   });
 
@@ -740,14 +803,16 @@
     approveStructureBtn.textContent = "本編生成を開始しています…";
     try {
       await approveStructure(currentJobId);
+      setStep(3);
       hideAllSections();
       show(progressSection);
       setProgress(12, "本編の執筆を開始します…");
+      renderChecklist("章立て", false);
       startPolling(currentJobId);
     } catch (err) {
       alert(err.message || "送信に失敗しました。");
       approveStructureBtn.disabled = false;
-      approveStructureBtn.textContent = "1. この章立てで本編を作成 →";
+      approveStructureBtn.textContent = "この章立てで本文を作る →";
     }
   });
 
@@ -758,7 +823,37 @@
   $("retry-btn").addEventListener("click", reset);
   $("new-project-btn").addEventListener("click", newProject);
 
+  // APIキー 表示/非表示 切替
+  if (apiKeyToggle) {
+    apiKeyToggle.addEventListener("click", () => {
+      const inp = $("api_key");
+      if (!inp) return;
+      if (inp.type === "password") { inp.type = "text"; apiKeyToggle.textContent = "隠す"; }
+      else { inp.type = "password"; apiKeyToggle.textContent = "表示"; }
+    });
+  }
+
+  // Kindle紹介文 コピー
+  if (copyDescriptionBtn && descriptionCopy) {
+    copyDescriptionBtn.addEventListener("click", async () => {
+      try {
+        descriptionCopy.select();
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(descriptionCopy.value);
+        } else {
+          document.execCommand("copy");
+        }
+        const prev = copyDescriptionBtn.textContent;
+        copyDescriptionBtn.textContent = "コピーしました";
+        setTimeout(() => { copyDescriptionBtn.textContent = prev; }, 1500);
+      } catch (e) {
+        alert("コピーに失敗しました。手動で選択してコピーしてください。");
+      }
+    });
+  }
+
   const savedKey = sessionStorage.getItem(API_KEY_STORE) || "";
   if (savedKey) $("api_key").value = savedKey;
+  setStep(1);
   renderProjects();
 })();

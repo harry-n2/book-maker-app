@@ -95,6 +95,8 @@ class BookConfig:
     profile_target_keywords: list[str] = field(default_factory=list)
     profile_failure_bank: list[str] = field(default_factory=list)
     profile_voice_types: list[str] = field(default_factory=list)
+    # 巻末宣伝の案内内容（LINE/講座/特典など。空なら一般的な締めにする）
+    promo_material: str = ""
 
 
 def _profile_kwargs(cfg: BookConfig) -> dict:
@@ -526,6 +528,7 @@ def generate_promotion(cfg: BookConfig, structure: dict) -> str:
         author=cfg.author,
         theme=cfg.theme,
         target_layer=cfg.target_layer,
+        promo_material=(cfg.promo_material or "（特になし。書籍テーマに沿った自然な締めと次の一歩の案内にする）"),
     )
     refs = _references_block(cfg)
     if refs:

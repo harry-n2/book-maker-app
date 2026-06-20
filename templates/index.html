@@ -3,249 +3,291 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Book Maker ── タイトル10選から選んで作る電子書籍</title>
+<title>Book Maker ── AIでKindle電子書籍を作るアプリ</title>
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <header>
   <h1>Book Maker</h1>
-  <p class="lead">テーマと参照素材から、Kindle 入稿可能な電子書籍を作成します。</p>
+  <p class="lead">AIでKindle電子書籍を作るアプリ ── 3ステップで完成</p>
 </header>
 <!--PERSISTENCE_NOTICE-->
 
+<!-- 操作ステップ -->
+<div class="steps" id="steps">
+  <div class="step active" id="step-1"><span class="step-num">1</span><span class="step-label">STEP 1　本の情報を入力</span></div>
+  <div class="step" id="step-2"><span class="step-num">2</span><span class="step-label">STEP 2　タイトルと章立てを確認</span></div>
+  <div class="step" id="step-3"><span class="step-num">3</span><span class="step-label">STEP 3　本文とWordファイルを生成</span></div>
+</div>
+
 <aside id="project-sidebar">
-  <h3>プロジェクト</h3>
+  <h3>これまでの本</h3>
   <button id="new-project-btn" type="button" class="side-btn">＋ 新しい本を作る</button>
   <ul id="project-list"></ul>
-  <p class="side-note">プロジェクトはこのブラウザ内に保存されます</p>
+  <p class="side-note">作成した本はこのブラウザに記録されます</p>
 </aside>
 
 <main>
+  <!-- ============ STEP 1: 入力 ============ -->
   <section id="form-section">
-    <h2>5つの項目で本を作る</h2>
-    <form id="book-form">
-      <label class="field">
-        <span class="num">1</span>
-        <span class="label-title">どんな本を作りますか？</span>
-        <span class="hint">テーマを1〜2行で書いてください。具体的なほど良い本が出ます。</span>
-        <textarea id="theme" name="theme" rows="3" required
-          placeholder="例：AIエージェント×フォルダ設計で副業を月100万円まで仕組み化する方法"></textarea>
-      </label>
-
-      <label class="field">
-        <span class="num">2</span>
-        <span class="label-title">読者は誰ですか？</span>
-        <span class="hint">あてはまるものを1つ選んでください。</span>
-        <select id="target_layer" name="target_layer" required>
-          <option value="大手企業の中堅幹部（45歳前後・年収1,000〜1,500万・組織依存からの脱却を考えている方）">大手企業の中堅幹部の方</option>
-          <option value="専門職・士業（コンサル・税理士・弁護士・エンジニア等。労働時間×単価の天井に悩む方）">専門職・士業の方</option>
-          <option value="経営者・個人事業主（年商の壁・自分が動かないと止まる構造を卒業したい方）">経営者・個人事業主の方</option>
-          <option value="副業1〜3年目の30代会社員（実績はあるが伸び悩んでいる方）">副業1〜3年目の方</option>
-          <option value="フリーランス・受託（マーケ・開発の混合受託で次のステージを探す方）">フリーランス・受託の方</option>
-        </select>
-      </label>
-
-      <label class="field">
-        <span class="num">3</span>
-        <span class="label-title">著者名（ペンネーム可）</span>
-        <span class="hint">書籍の著者として表示される名前です。</span>
-        <input type="text" id="author" name="author" required placeholder="例：ハリー">
-      </label>
-
-      <fieldset class="field reference-block">
-        <legend>
-          <span class="num">4</span>
-          <span class="label-title">出版希望者プロフィール</span>
-        </legend>
-        <span class="hint">著者ごとに背景、実績、口調を指定してください。未入力の項目は無理に本文へ配置しません。</span>
-
-        <div class="ref-row">
-          <span class="ref-label">表示する著者名</span>
-          <input type="text" id="profile_name" name="profile_name" placeholder="例：山田太郎">
+    <h2>STEP 1　本の情報を入力</h2>
+    <p class="note">下の項目を入力して、いちばん下の青いボタンを押してください。例文を参考に書くと良い本になります。</p>
+    <div class="layout">
+      <form id="book-form">
+        <!-- Gemini APIキー -->
+        <label class="field" for="api_key">
+          <span class="label-title"><span class="num">1</span>Gemini APIキー</span>
+          <span class="badge badge-req">必須</span>
+          <span class="hint">本文を作るためのカギです。下の説明のとおり無料で取得できます。</span>
+        </label>
+        <div class="apikey-help">
+          Google AI Studio（<a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">aistudio.google.com/app/apikey</a>）で無料取得したGemini APIキーを貼り付けてください。<br>
+          <strong>このアプリはAPIキーを保存しません。本を作る間だけ使います。</strong>
+        </div>
+        <div class="apikey-row">
+          <input type="password" id="api_key" name="api_key" required placeholder="AIzaSy... を貼り付け" autocomplete="off">
+          <button type="button" id="api-key-toggle" class="toggle-btn" aria-label="APIキーの表示と非表示を切り替える">表示</button>
         </div>
 
-        <div class="ref-row">
-          <span class="ref-label">背景・実績・肩書き</span>
-          <textarea id="profile_author_bio" name="profile_author_bio" rows="3"
-            placeholder="例：中小企業のWeb集客を10年支援。飲食店、士業、ECの改善事例が多い。"></textarea>
-        </div>
+        <!-- テーマ -->
+        <label class="field" for="theme">
+          <span class="label-title"><span class="num">2</span>書籍テーマ</span>
+          <span class="badge badge-req">必須</span>
+          <span class="hint">どんな本を作りますか？1〜2行で具体的に。</span>
+          <textarea id="theme" name="theme" rows="2" required placeholder="例：AIを使って副業を仕組み化する方法"></textarea>
+        </label>
 
-        <div class="ref-row">
-          <span class="ref-label">口調・文体</span>
-          <textarea id="profile_tone" name="profile_tone" rows="2"
-            placeholder="例：落ち着いた実務家の口調。断定しすぎず、具体例を交えて説明する。"></textarea>
-        </div>
+        <!-- 想定読者 -->
+        <label class="field" for="target_layer">
+          <span class="label-title"><span class="num">3</span>想定読者</span>
+          <span class="badge badge-req">必須</span>
+          <span class="hint">この本を読んでほしい人を選んでください。</span>
+          <select id="target_layer" name="target_layer" required>
+            <option value="副業を始めたが売上が伸びない30代会社員">副業を始めたが売上が伸びない30代会社員</option>
+            <option value="これから副業・個人ビジネスを始めたい会社員">これから副業を始めたい会社員</option>
+            <option value="専門職・士業で時間単価の天井に悩む方">専門職・士業の方</option>
+            <option value="経営者・個人事業主で仕組み化したい方">経営者・個人事業主の方</option>
+            <option value="フリーランス・受託で次のステージを探す方">フリーランス・受託の方</option>
+          </select>
+        </label>
 
-        <div class="ref-row">
-          <span class="ref-label">強調したいキーワード・読者像（1行1項目）</span>
-          <textarea id="profile_target_keywords" name="profile_target_keywords" rows="3"
-            placeholder="初心者経営者&#10;広告費を抑えたい&#10;問い合わせ導線"></textarea>
-        </div>
+        <!-- 読者の悩み -->
+        <label class="field" for="reader_pain">
+          <span class="label-title"><span class="num">4</span>読者の悩み</span>
+          <span class="badge badge-opt">任意</span>
+          <span class="hint">読者が今いちばん困っていることを書くと、刺さる本になります。</span>
+          <textarea id="reader_pain" name="reader_pain" rows="2" placeholder="例：毎日作業しているのに、月5万円以上に伸びない"></textarea>
+        </label>
 
-        <div class="ref-row">
-          <span class="ref-label">使ってよい失敗例・実体験（1行1項目、任意）</span>
-          <textarea id="profile_failure_bank" name="profile_failure_bank" rows="3"
-            placeholder="例：広告だけに頼って利益が残らなかった案件"></textarea>
-        </div>
+        <!-- 読後に得られる変化 -->
+        <label class="field" for="reader_change">
+          <span class="label-title"><span class="num">5</span>読後に得られる変化</span>
+          <span class="badge badge-opt">任意</span>
+          <span class="hint">読み終えた人がどうなれるかを書いてください。</span>
+          <textarea id="reader_change" name="reader_change" rows="2" placeholder="例：AIで作業を減らし、安定して収益化する手順が分かる"></textarea>
+        </label>
 
-        <div class="ref-row">
-          <span class="ref-label">使ってよい語り口の型（1行1項目、任意）</span>
-          <textarea id="profile_voice_types" name="profile_voice_types" rows="3"
-            placeholder="例：実務経験からの助言&#10;チェックリスト型の整理"></textarea>
-        </div>
-      </fieldset>
+        <!-- 著者名 -->
+        <label class="field" for="author">
+          <span class="label-title"><span class="num">6</span>著者名（ペンネーム可）</span>
+          <span class="badge badge-req">必須</span>
+          <span class="hint">本の著者として表示される名前です。</span>
+          <input type="text" id="author" name="author" required placeholder="例：ハリー">
+        </label>
 
-      <fieldset class="field reference-block">
-        <legend>
-          <span class="num">4</span>
-          <span class="label-title">参考にする素材（任意・複数可）</span>
-        </legend>
-        <span class="hint">添付した素材は本の事実・事例・固有名詞として使われます。</span>
+        <!-- 著者プロフィール -->
+        <fieldset class="field reference-block">
+          <legend>著者プロフィール（任意）</legend>
+          <span class="hint">分かる範囲でOK。書いた内容だけが本に反映されます（無い実績は作りません）。</span>
+          <div class="ref-row">
+            <span class="ref-label">表示する著者名</span>
+            <input type="text" id="profile_name" name="profile_name" placeholder="例：山田太郎">
+          </div>
+          <div class="ref-row">
+            <span class="ref-label">背景・実績・肩書き</span>
+            <textarea id="profile_author_bio" name="profile_author_bio" rows="2" placeholder="例：中小企業のWeb集客を10年支援。"></textarea>
+          </div>
+          <div class="ref-row">
+            <span class="ref-label">トーン（文章の雰囲気）</span>
+            <input type="text" id="profile_tone" name="profile_tone" placeholder="例：落ち着いた実務家の口調。やさしく具体的に。">
+          </div>
+          <div class="ref-row">
+            <span class="ref-label">強調したいキーワード（1行1項目）</span>
+            <textarea id="profile_target_keywords" name="profile_target_keywords" rows="2" placeholder="AI活用&#10;仕組み化&#10;副業"></textarea>
+          </div>
+          <div class="ref-row">
+            <span class="ref-label">使ってよい失敗例・実体験（1行1項目・任意）</span>
+            <textarea id="profile_failure_bank" name="profile_failure_bank" rows="2" placeholder="例：広告だけに頼って利益が残らなかった経験"></textarea>
+          </div>
+          <div class="ref-row">
+            <span class="ref-label">使ってよい語り口の型（1行1項目・任意）</span>
+            <textarea id="profile_voice_types" name="profile_voice_types" rows="2" placeholder="例：実務経験からの助言&#10;チェックリスト型の整理"></textarea>
+          </div>
+        </fieldset>
 
-        <div class="ref-row">
-          <span class="ref-label">URL（1行に1つ）</span>
-          <textarea id="ref_urls" name="ref_urls" rows="2"
-            placeholder="https://example.com/article&#10;https://note.com/yourpost"></textarea>
-        </div>
+        <!-- 巻末宣伝内容 -->
+        <label class="field" for="promo_material">
+          <span class="label-title"><span class="num">7</span>巻末宣伝の内容</span>
+          <span class="badge badge-opt">任意</span>
+          <span class="hint">本の最後で案内したいもの（LINE・講座・特典など）。押し売りにならない自然な誘導にします。</span>
+          <textarea id="promo_material" name="promo_material" rows="2" placeholder="例：無料のAI副業テンプレートをLINEで配布中。登録特典あり。"></textarea>
+        </label>
 
-        <div class="ref-row">
-          <span class="ref-label">NotebookLM の共有 URL</span>
-          <textarea id="notebooklm_urls" name="notebooklm_urls" rows="1"
-            placeholder="https://notebooklm.google.com/notebook/xxxxx (任意)"></textarea>
-          <span class="ref-hint-small">
-            ※ NotebookLM の自動取得は限定的です。ノート内の『エクスポート → Markdown』を下のファイル欄に添付するのが確実です。
-          </span>
-        </div>
+        <!-- 参考資料 -->
+        <fieldset class="field reference-block">
+          <legend>参考資料（任意・複数可）</legend>
+          <span class="hint">添付した素材は本の事実・事例として使われます。無くてもOKです。</span>
+          <div class="ref-row">
+            <span class="ref-label">URL（1行に1つ）</span>
+            <textarea id="ref_urls" name="ref_urls" rows="2" placeholder="https://example.com/article"></textarea>
+          </div>
+          <div class="ref-row">
+            <span class="ref-label">NotebookLM の共有 URL</span>
+            <textarea id="notebooklm_urls" name="notebooklm_urls" rows="1" placeholder="https://notebooklm.google.com/notebook/xxxxx （任意）"></textarea>
+            <span class="ref-hint-small">※ 取得が難しい場合は、下の「テキスト直貼り」が確実です。</span>
+          </div>
+          <div class="ref-row">
+            <span class="ref-label">ファイル（PDF / Word / Markdown / Text / CSV）── 最大10個</span>
+            <input type="file" id="files" name="files" multiple data-max="10" accept=".pdf,.docx,.md,.markdown,.txt,.csv,.json,.yml,.yaml">
+            <p class="ref-counter" id="file-counter">0 / 10 ファイル選択中</p>
+            <ul id="file-list" class="upload-list"></ul>
+          </div>
+          <div class="ref-row">
+            <span class="ref-label">画像（JPG / PNG / WebP）── 最大10個・AIが内容を読み取ります</span>
+            <input type="file" id="images" name="images" multiple data-max="10" accept="image/*">
+            <p class="ref-counter" id="image-counter">0 / 10 画像選択中</p>
+            <ul id="image-list" class="upload-list"></ul>
+          </div>
+          <div class="ref-row">
+            <span class="ref-label">★ テキスト直貼り（任意・最も確実）</span>
+            <textarea id="pasted_text" name="pasted_text" rows="4" placeholder="参考にしたい本文をそのまま貼り付け。複数は --- 行で区切ります。"></textarea>
+          </div>
+        </fieldset>
 
-        <div class="ref-row">
-          <span class="ref-label">ファイル（PDF / Word / Markdown / Text / CSV）── 最大10個まで</span>
-          <input type="file" id="files" name="files" multiple data-max="10"
-            accept=".pdf,.docx,.md,.markdown,.txt,.csv,.json,.yml,.yaml">
-          <p class="ref-counter" id="file-counter">0 / 10 ファイル選択中</p>
-          <ul id="file-list" class="upload-list"></ul>
-        </div>
+        <button type="submit" id="submit-btn" class="primary-button">タイトル案を作る →</button>
+      </form>
 
-        <div class="ref-row">
-          <span class="ref-label">画像（JPG / PNG / WebP）── 最大10個まで・AI が内容を読み取ります</span>
-          <input type="file" id="images" name="images" multiple data-max="10" accept="image/*">
-          <p class="ref-counter" id="image-counter">0 / 10 画像選択中</p>
-          <ul id="image-list" class="upload-list"></ul>
-        </div>
-
-        <div class="ref-row">
-          <span class="ref-label">★ テキスト直貼り（任意・最も確実 ／ 複数本文は「---」行で区切る）</span>
-          <textarea id="pasted_text" name="pasted_text" rows="6"
-            placeholder="参照したい本文をそのまま貼り付けてください。&#10;Google Docs などが取得失敗する場合のフォールバックとして最強です。&#10;複数の本文を入れる場合は --- 行で区切ってください。"></textarea>
-          <span class="ref-hint-small">
-            URL や NotebookLM が取れない場合は、本文を直接ペーストすると確実に素材として使われます。
-          </span>
-        </div>
-      </fieldset>
-
-      <label class="field">
-        <span class="num">5</span>
-        <span class="label-title">Gemini API キー</span>
-        <span class="hint">
-          <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">Google AI Studio</a>
-          で無料で取得できます。
-        </span>
-        <input type="password" id="api_key" name="api_key" required placeholder="AIzaSy...">
-      </label>
-
-      <button type="submit" id="submit-btn">参照素材を取り込んで次へ →</button>
-    </form>
-    <p class="note">最初に参照素材（URL／ファイル／画像／NotebookLM／直貼りテキスト）を取り込み、内容のプレビュー画面で確認してからタイトル10選を生成します。素材が薄いと本書の品質が大きく下がるため、確認画面で取り込み結果をご覧ください。</p>
+      <aside class="reference-block" aria-label="作成の流れ">
+        <h3 style="margin-top:0;">作成の流れ</h3>
+        <ol style="padding-left:20px; margin:0;">
+          <li>本の情報を入力する（この画面）</li>
+          <li>AIが作る<strong>タイトル案</strong>から1つ選ぶ</li>
+          <li><strong>章立て</strong>を確認する</li>
+          <li>本文・おわりに・巻末・紹介文を自動生成</li>
+          <li><strong>Wordファイル</strong>をダウンロードしてKDPへ</li>
+        </ol>
+        <p class="note" style="margin-top:12px;">所要：数分。途中で画面を閉じないでください。</p>
+      </aside>
+    </div>
   </section>
 
+  <!-- ============ 参照素材プレビュー ============ -->
   <section id="references-review-section" class="hidden">
-    <h2>参照素材の取り込み結果をご確認ください</h2>
-    <p class="note">本書はこの参照素材を「核」として生成されます。取り込みが不十分なソースがあれば、フォームに戻って素材を直してください。</p>
+    <h2>参考素材の取り込み結果</h2>
+    <p class="note">この素材をもとに本を作ります。問題なければ「この内容で進める」を押してください。</p>
     <div id="references-list" class="references-list"></div>
     <div id="references-warning-banner" class="references-warning-banner hidden">
-      ⚠ <strong>警告のあるソースがあります。</strong> 短すぎる／取得失敗のソースは本書のクオリティを大きく損ないます。フォームに戻って素材を直すか、テキスト直貼り欄に本文を貼り付けることを強く推奨します。
+      ⚠ 取得できなかった／短すぎる素材があります。フォームに戻って直すか、テキスト直貼りをおすすめします。
     </div>
     <div class="references-actions">
-      <button type="button" id="back-to-form-btn" class="secondary-btn">← フォームに戻って素材を直す</button>
-      <button type="button" id="confirm-references-btn" class="primary-btn">この素材でタイトル10選を作成 →</button>
+      <button type="button" id="back-to-form-btn" class="secondary-btn">← 入力に戻る</button>
+      <button type="button" id="confirm-references-btn" class="primary-btn">この内容で進める（タイトル案を作る）→</button>
     </div>
     <p class="note" id="references-summary"></p>
   </section>
 
+  <!-- ============ STEP 2: タイトル選択 ============ -->
   <section id="title-pick-section" class="hidden">
-    <h2>タイトル候補10選から1つお選びください</h2>
+    <h2>STEP 2　タイトルを選ぶ</h2>
     <p class="note" id="title-pick-summary">候補を読み込み中…</p>
     <ul id="title-cards"></ul>
     <div class="title-pick-actions">
-      <button type="button" id="back-btn" class="secondary-btn">← フォームに戻る</button>
-      <button type="button" id="regen-titles-btn" class="secondary-btn">★ さらにベストセラー獲得できるタイトル10選を再出力</button>
-      <button type="button" id="confirm-title-btn" disabled>このタイトルで章立てを作る →</button>
+      <button type="button" id="back-btn" class="secondary-btn">← 入力に戻る</button>
+      <button type="button" id="regen-titles-btn" class="secondary-btn">★ 別のタイトル案を出す</button>
+      <button type="button" id="confirm-title-btn" disabled>このタイトルで進める →</button>
     </div>
     <p class="note" id="titles-regen-note">タイトル再生成は最大3回まで使えます。</p>
   </section>
 
+  <!-- ============ 章立て生成中 ============ -->
   <section id="structure-generating-section" class="hidden">
-    <h2>章立てを生成中です。30〜60秒程度かかります。</h2>
-    <div class="progress-wrap">
-      <div class="progress-bar"><div class="indeterminate"></div></div>
-    </div>
-    <p id="structure-generating-message">章立てを構築中…</p>
+    <h2>章立てを作っています</h2>
+    <div class="progress-wrap"><div class="progress-bar"><div class="indeterminate"></div></div></div>
+    <p id="structure-generating-message">章立てを構築中…（数十秒）</p>
   </section>
 
+  <!-- ============ 章立て確認 ============ -->
   <section id="structure-review-section" class="hidden">
-    <h2>章立て案をご確認ください</h2>
-    <p class="note">本編作成の前に章立てを確認してください。必要なら構成を再生成できます。</p>
+    <h2>章立てを確認</h2>
+    <p class="note">この内容で本文を作ります。問題なければ「この章立てで本文を作る」を押してください。</p>
     <div id="structure-title-banner" class="structure-title-banner"></div>
     <div id="structure-tree" class="structure-tree"></div>
     <div class="structure-actions">
-      <button type="button" id="approve-structure-btn" class="primary-btn">1. この構成で本編を作成 →</button>
-      <button type="button" id="regen-structure-btn" class="secondary-btn">2. さらにベストセラーが取れる構成で再出力</button>
-      <button type="button" id="open-modify-btn" class="secondary-btn">3. 部分修正を指示する</button>
+      <button type="button" id="approve-structure-btn" class="primary-btn">この章立てで本文を作る →</button>
+      <button type="button" id="regen-structure-btn" class="secondary-btn">別の構成を出す</button>
+      <button type="button" id="open-modify-btn" class="secondary-btn">部分的に直す</button>
     </div>
     <div id="modify-panel" class="modify-panel hidden">
-      <label for="modify-instruction">修正指示（自由記述）</label>
-      <textarea id="modify-instruction" rows="4" placeholder="例：第3章のH2タイトルに『年収1,000万のロジック』を追加してほしい / 第1章をもっと痛みの強い構成にしてほしい"></textarea>
+      <label for="modify-instruction" style="font-weight:700;">どう直したいか教えてください</label>
+      <textarea id="modify-instruction" rows="3" placeholder="例：第3章にチェックリストを足してほしい"></textarea>
       <div class="modify-actions">
         <button type="button" id="cancel-modify-btn" class="secondary-btn">キャンセル</button>
-        <button type="button" id="submit-modify-btn" class="primary-btn">この指示で修正</button>
+        <button type="button" id="submit-modify-btn" class="primary-btn">この指示で直す</button>
       </div>
     </div>
-    <p class="note" id="structure-regen-note">構成再生成は3回まで使えます。</p>
+    <p class="note" id="structure-regen-note">構成の再生成は最大3回まで使えます。</p>
   </section>
 
+  <!-- ============ STEP 3: 本文生成中 ============ -->
   <section id="progress-section" class="hidden">
-    <h2>作成中です。少々お待ちください。</h2>
+    <h2>STEP 3　本文とWordファイルを作っています</h2>
     <div class="progress-wrap">
       <div class="progress-bar"><div id="progress-fill"></div></div>
       <p id="progress-pct">0%</p>
     </div>
     <p id="progress-message">準備中…</p>
+    <ul id="progress-checklist" class="checklist"></ul>
+    <p class="note" style="text-align:center;">画面を閉じずにお待ちください。途中で止まっても保存され、続きから再開できます。</p>
     <p id="progress-references" class="note"></p>
   </section>
 
+  <!-- ============ 完成 ============ -->
   <section id="result-section" class="hidden">
-    <h2>完成しました</h2>
+    <h2>🎉 完成しました！</h2>
     <p id="result-title" class="result-title"></p>
     <p id="result-stats" class="result-stats"></p>
     <div class="downloads">
-      <a id="download-md" class="dl-btn">Markdown</a>
-      <a id="download-docx" class="dl-btn primary">Word（KDP入稿）</a>
-      <a id="download-titles" class="dl-btn">タイトル10選</a>
-      <a id="download-description" class="dl-btn">Kindle 紹介文（720字）</a>
+      <a id="download-docx" class="dl-btn primary">① Wordファイル（KDP入稿用）をダウンロード</a>
+      <a id="download-md" class="dl-btn">Markdown（テキスト版）</a>
+      <a id="download-titles" class="dl-btn">タイトル候補一覧</a>
+      <a id="download-description" class="dl-btn">Kindle紹介文（ファイル）</a>
       <a id="download-notebooklm" class="dl-btn">NotebookLM 取込用</a>
     </div>
-    <p class="note">Word は KDP に直接アップロード可能。Kindle紹介文は KDP「本の説明」欄に貼り付けてご活用ください。</p>
+    <div>
+      <strong>② Kindle紹介文をコピー</strong>（KDPの「本の説明」に貼り付け）
+      <div class="copy-box">
+        <textarea id="description-copy" readonly placeholder="紹介文を読み込み中…"></textarea>
+        <button type="button" id="copy-description-btn" class="secondary-btn">コピー</button>
+      </div>
+    </div>
+    <ol class="next-steps">
+      <li>① Wordファイルをダウンロード</li>
+      <li>② Kindle紹介文をコピー</li>
+      <li>③ Amazon KDP にアップロードして出版</li>
+    </ol>
     <button id="reset-btn">もう1冊作る</button>
   </section>
 
+  <!-- ============ エラー ============ -->
   <section id="error-section" class="hidden">
-    <h2>エラーが発生しました</h2>
+    <h2>うまくいきませんでした</h2>
     <p id="error-message"></p>
     <button id="retry-btn">最初に戻る</button>
   </section>
 </main>
 
 <footer>
-  <p>Book Maker v1.2 ── 視認性向上版（コピペ枠・ケーススタディBOX・比較表・チェックリスト）／ 3段階UX ／ Kindle KDP 入稿対応</p>
+  <p>Book Maker ── AIでKindle電子書籍を作るアプリ ／ 無料枠・BYOK対応 ／ KDP（Word）入稿対応</p>
 </footer>
 
 <script src="/static/app.js"></script>
