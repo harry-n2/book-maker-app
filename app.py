@@ -18,11 +18,17 @@ from fastapi.staticfiles import StaticFiles
 
 from generator import (
     BookConfig,
+    build_write_plan,
+    clean_public_manuscript,
+    finalize_book,
+    generate_description,
+    generate_promotion,
     generate_structure_bestseller,
     generate_structure_for_review,
     regenerate_titles_bestseller,
     start_titles_job,
     start_writing,
+    write_one_section,
 )
 from references import (
     Reference,
@@ -392,31 +398,14 @@ async def confirm_title_endpoint(job_id: str, adopted_index: int = Form(...)):
     if not 0 <= adopted_index < len(candidates):
         raise HTTPException(status_code=400, detail="採用 index が範囲外です。")
 
-    state["adopted_index"] = adopted_index
-    state["status"] = "generating_structure"
-    state["progress"] = 10
-    state["message"] = "章立て（章構成）を生成中..."
-
-    cfg = _cfg_from_state(state)
-    job_dir = JOBS / job_id
-
-    def runner() -> None:
-        try:
-            structure = generate_structure_for_review(cfg, job_dir, candidates, adopted_index)
-            JOB_STATE[job_id].update({
-                "status": "structure_review",
-                "progress": 0,
-                "message": "章立てが整いました。確認してください。",
-                "current_structure": structure,
-            })
-        except Exception as exc:  # noqa: BLE001
-            JOB_STATE[job_id].update({
-                "status": "error",
-                "message": f"章立て生成に失敗しました：{exc}",
-                "trace": traceback.format_exc(),
-            })
-
-    threading.Thread(target=runner, daemon=True).start()
+    # サーバーレス対応: バックグラウンドスレッドを使わず、状態のみ進める。
+    # 実際の章立て生成は /advance（クライアントのポーリングが駆動）で1工程として行う。
+    state.update({
+        "adopted_index": adopted_index,
+        "status": "generating_structure",
+        "progress": 10,
+        "message": "章立て（章構成）を生成中...",
+    })
     return {"job_id": job_id, "adopted_index": adopted_index}
 
 
@@ -445,37 +434,11 @@ async def regenerate_structure_endpoint(job_id: str):
     adopted_index = state.get("adopted_index")
     if adopted_index is None or not 0 <= adopted_index < len(candidates):
         raise HTTPException(status_code=400, detail="採用タイトルが特定できません。")
-    adopted = candidates[adopted_index]
-    adopted_title = adopted.get("title", "")
-    adopted_subtitle = adopted.get("subtitle", "")
-    prev_structure = state.get("current_structure") or {}
-
-    cfg = _cfg_from_state(state)
-    job_dir = JOBS / job_id
-
-    state["status"] = "regenerating_structure"
-    state["message"] = "ベストセラー強化版の章立てを生成中..."
-
-    def runner() -> None:
-        try:
-            new_structure = generate_structure_bestseller(cfg, adopted_title, adopted_subtitle, prev_structure)
-            (job_dir / "structure.json").write_text(
-                json.dumps(new_structure, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
-            JOB_STATE[job_id].update({
-                "status": "structure_review",
-                "message": "ベストセラー版で章立てを再生成しました。確認してください。",
-                "current_structure": new_structure,
-                "structure_regen_count": JOB_STATE[job_id].get("structure_regen_count", 0) + 1,
-            })
-        except Exception as exc:  # noqa: BLE001
-            JOB_STATE[job_id].update({
-                "status": "structure_review",
-                "message": f"章立て再生成に失敗しました：{exc}（前回の章立てを保持しています）",
-                "trace": traceback.format_exc(),
-            })
-
-    threading.Thread(target=runner, daemon=True).start()
+    # サーバーレス対応: スレッドを使わず状態のみ進める。再生成は /advance が1工程として実行。
+    state.update({
+        "status": "regenerating_structure",
+        "message": "ベストセラー強化版の章立てを生成中...",
+    })
     return {
         "job_id": job_id,
         "structure_regen_count": state.get("structure_regen_count", 0) + 1,
@@ -506,32 +469,15 @@ async def approve_structure_endpoint(job_id: str):
     if adopted_index is None or not 0 <= adopted_index < len(candidates):
         raise HTTPException(status_code=400, detail="採用タイトルが特定できません。")
 
-    cfg = _cfg_from_state(state)
-    job_dir = JOBS / job_id
-    state.update({"status": "running", "progress": 12, "message": "本編の執筆を開始します..."})
-
-    def runner() -> None:
-        try:
-            def progress(msg: str, pct: int) -> None:
-                JOB_STATE[job_id]["progress"] = pct
-                JOB_STATE[job_id]["message"] = msg
-
-            result = start_writing(cfg, job_dir, structure, candidates, adopted_index, progress)
-            result["reference_count"] = state.get("reference_count", 0)
-            JOB_STATE[job_id].update({
-                "status": "done",
-                "progress": 100,
-                "message": "完了しました。",
-                "result": result,
-            })
-        except Exception as exc:  # noqa: BLE001
-            JOB_STATE[job_id].update({
-                "status": "error",
-                "message": f"エラーが発生しました：{exc}",
-                "trace": traceback.format_exc(),
-            })
-
-    threading.Thread(target=runner, daemon=True).start()
+    # サーバーレス対応: 本編は「1工程ずつ」進める。実生成は /advance（ポーリング駆動）で実行。
+    plan = build_write_plan(structure)
+    state.update({
+        "status": "running",
+        "progress": 12,
+        "message": "本編の執筆を開始します...",
+        "write_plan": plan,
+        "write_cursor": 0,
+    })
     return {"job_id": job_id}
 
 
@@ -540,11 +486,7 @@ async def approve_structure_endpoint(job_id: str):
 # ---------------------------------------------------------------------------
 
 
-@app.get("/status/{job_id}")
-async def status(job_id: str) -> JSONResponse:
-    state = JOB_STATE.get(job_id)
-    if not state:
-        return JSONResponse({"status": "not_found"}, status_code=404)
+def _status_payload(state: dict) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "status": state["status"],
         "progress": state.get("progress", 0),
@@ -564,10 +506,111 @@ async def status(job_id: str) -> JSONResponse:
     if state["status"] in ("structure_review", "regenerating_structure", "running"):
         payload["structure"] = state.get("current_structure")
     if state["status"] == "done":
-        payload["result"] = state["result"]
+        payload["result"] = state.get("result")
     if state["status"] == "error":
         payload["message"] = state.get("message", "エラー")
-    return JSONResponse(payload)
+    return payload
+
+
+@app.get("/status/{job_id}")
+async def status(job_id: str) -> JSONResponse:
+    state = JOB_STATE.get(job_id)
+    if not state:
+        return JSONResponse({"status": "not_found"}, status_code=404)
+    return JSONResponse(_status_payload(state))
+
+
+def _advance_one_write_step(job_id: str, state: dict, cfg: BookConfig, job_dir: Path) -> None:
+    """status=running のとき write_plan を1工程だけ進める（サーバーレスで完走するための分割実行）。"""
+    structure = state.get("current_structure") or {}
+    plan = state.get("write_plan") or []
+    cursor = state.get("write_cursor", 0)
+    if cursor >= len(plan):
+        return
+    step = plan[cursor]
+    kind = step.get("kind")
+    candidates = state.get("candidates") or []
+    adopted_index = state.get("adopted_index")
+    total = max(1, len(plan))
+
+    if kind == "section":
+        write_one_section(cfg, job_dir, structure, structure.get("title", ""), step)
+        msg = f"{step.get('label', '')}を作成しました"
+    elif kind == "promotion":
+        promo = clean_public_manuscript(generate_promotion(cfg, structure))
+        (job_dir / "manuscript").mkdir(parents=True, exist_ok=True)
+        (job_dir / "manuscript" / "98_promotion.md").write_text(promo, encoding="utf-8")
+        msg = "巻末の宣伝セクションを作成しました"
+    elif kind == "description":
+        desc = clean_public_manuscript(generate_description(cfg, structure))
+        (job_dir / "book_description.md").write_text(desc, encoding="utf-8")
+        msg = "Kindle紹介文を作成しました"
+    elif kind == "finalize":
+        result = finalize_book(cfg, job_dir, structure, candidates, adopted_index)
+        result["reference_count"] = state.get("reference_count", 0)
+        state.update({
+            "status": "done", "progress": 100, "message": "完了しました。",
+            "result": result, "write_cursor": cursor + 1,
+        })
+        return
+    else:
+        state.update({"write_cursor": cursor + 1})
+        return
+
+    new_cursor = cursor + 1
+    progress = min(95, 12 + int(new_cursor / total * 80))
+    state.update({"write_cursor": new_cursor, "progress": progress, "message": msg})
+
+
+@app.post("/advance/{job_id}")
+async def advance_endpoint(job_id: str) -> JSONResponse:
+    """ポーリングが駆動するワーカー。1呼び出しにつき1工程だけ実行し最新状態を返す。
+
+    バックグラウンドスレッドを使わないため、Vercel等のサーバーレスでも多段ジョブが完走する。
+    """
+    state = JOB_STATE.get(job_id)
+    if not state:
+        return JSONResponse({"status": "not_found"}, status_code=404)
+    st = state.get("status")
+    cfg = _cfg_from_state(state)
+    job_dir = JOBS / job_id
+    candidates = state.get("candidates") or []
+    adopted_index = state.get("adopted_index")
+    try:
+        if st == "generating_structure":
+            structure = generate_structure_for_review(cfg, job_dir, candidates, adopted_index)
+            state.update({
+                "status": "structure_review", "progress": 0,
+                "message": "章立てが整いました。確認してください。",
+                "current_structure": structure,
+            })
+        elif st == "regenerating_structure":
+            adopted = candidates[adopted_index] if (adopted_index is not None and 0 <= adopted_index < len(candidates)) else {}
+            prev_structure = state.get("current_structure") or {}
+            new_structure = generate_structure_bestseller(
+                cfg, adopted.get("title", ""), adopted.get("subtitle", ""), prev_structure
+            )
+            (job_dir / "structure.json").write_text(
+                json.dumps(new_structure, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            state.update({
+                "status": "structure_review",
+                "message": "ベストセラー版で章立てを再生成しました。確認してください。",
+                "current_structure": new_structure,
+                "structure_regen_count": state.get("structure_regen_count", 0) + 1,
+            })
+        elif st == "running":
+            _advance_one_write_step(job_id, state, cfg, job_dir)
+        # それ以外（references_review / title_picked / structure_review / done / error）は no-op。
+    except Exception as exc:  # noqa: BLE001
+        state.update({
+            "status": "error",
+            "message": f"生成に失敗しました：{exc}",
+            "trace": traceback.format_exc(),
+        })
+
+    fresh = JOB_STATE.get(job_id) or {"status": "error", "message": "状態取得に失敗しました。"}
+    return JSONResponse(_status_payload(fresh))
 
 
 @app.get("/download/{job_id}/{filename}")

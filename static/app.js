@@ -418,6 +418,12 @@
     if (!res.ok) throw new Error("状態取得に失敗しました");
     return res.json();
   }
+  // サーバーレス対応: 1呼び出し=1工程を進めるワーカー。ポーリングのたびに次工程へ前進する。
+  async function advance(jobId) {
+    const res = await fetch(`/advance/${jobId}`, { method: "POST" });
+    if (!res.ok) throw new Error("生成の進行に失敗しました");
+    return res.json();
+  }
 
   function showResult(jobId, result) {
     resultTitle.textContent = `『${result.title}』 ── ${result.subtitle || ""}`;
@@ -447,12 +453,17 @@
   // -------------------------------------------------------------------
   function startPolling(jobId) {
     clearPoll();
+    let busy = false; // 前工程が完了するまで次を呼ばない（重複実行防止）
     pollTimer = setInterval(async () => {
+      if (busy) return;
+      busy = true;
       try {
-        const state = await pollStatus(jobId);
+        const state = await advance(jobId);
         handleStateUpdate(jobId, state);
       } catch (err) {
         console.warn(err);
+      } finally {
+        busy = false;
       }
     }, 2000);
   }

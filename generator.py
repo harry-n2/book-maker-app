@@ -1239,3 +1239,87 @@ def move_word_toc_after_intro(docx_path: Path) -> None:
 
 
 
+
+
+# ---------------------------------------------------------------------------
+# ステップ実行（サーバーレス対応・1呼び出し=1工程で再開可能）
+# ---------------------------------------------------------------------------
+def _find_section(structure: dict, step: dict) -> dict:
+    """write_plan の section ステップから対応する章dictを取得。"""
+    num = step.get("num")
+    if num == 0:
+        return structure.get("intro", {}) or {}
+    if num == 99:
+        return structure.get("outro", {}) or {}
+    chapters = structure.get("chapters", [])
+    idx = (num or 1) - 1
+    return chapters[idx] if 0 <= idx < len(chapters) else {}
+
+
+def build_write_plan(structure: dict) -> list[dict]:
+    """本編生成を1工程ずつに分解した実行計画（JSON保存可能）。"""
+    intro = structure.get("intro", {}) or {}
+    outro = structure.get("outro", {}) or {}
+    chapters = structure.get("chapters", []) or []
+    plan: list[dict] = []
+    if intro.get("id"):
+        plan.append({"kind": "section", "id": intro["id"], "num": 0, "label": "はじめに", "ref": False})
+    for i, ch in enumerate(chapters, start=1):
+        cid = ch.get("id") or f"{i:02d}_chapter_{i:02d}"
+        plan.append({"kind": "section", "id": cid, "num": i, "label": f"第{i}章", "ref": True})
+    if outro.get("id"):
+        plan.append({"kind": "section", "id": outro["id"], "num": 99, "label": "おわりに", "ref": False})
+    plan.append({"kind": "promotion"})
+    plan.append({"kind": "description"})
+    plan.append({"kind": "finalize"})
+    return plan
+
+
+def write_one_section(cfg: BookConfig, job_dir: Path, structure: dict, title: str, step: dict) -> None:
+    """write_plan の1 section（はじめに/各章/おわりに）を生成して保存。既存ファイルがあれば再生成しない（冪等）。"""
+    man = job_dir / "manuscript"
+    man.mkdir(parents=True, exist_ok=True)
+    out_path = man / f"{step['id']}.md"
+    if out_path.exists() and out_path.read_text(encoding="utf-8").strip():
+        return
+    num = step.get("num", 1)
+    label = step.get("label", f"第{num}章")
+    ch = _find_section(structure, step)
+    if not ch.get("sections"):
+        ch["sections"] = [{"h2": "（節）", "summary": ch.get("key_message", ""), "subsections": []}]
+    body = clean_public_manuscript(generate_chapter(cfg, ch, num, title, label))
+    full = body.rstrip()
+    if step.get("ref"):
+        ref_block = generate_reference(cfg, ch, num, label)
+        full = clean_public_manuscript(full + "\n\n" + ref_block + "\n")
+    out_path.write_text(clean_public_manuscript(full), encoding="utf-8")
+
+
+def finalize_book(
+    cfg: BookConfig, job_dir: Path, structure: dict, candidates: list[dict], adopted_index: int
+) -> dict:
+    """全 section 生成後の最終化：タイトル一覧・統合Markdown・Word(docx)を作る（API不要）。"""
+    adopted = candidates[adopted_index] if 0 <= adopted_index < len(candidates) else {}
+    title = adopted.get("title", "")
+    subtitle = adopted.get("subtitle", "")
+    man = job_dir / "manuscript"
+    (job_dir / "title_candidates.md").write_text(
+        render_title_candidates_md(candidates, adopted_index), encoding="utf-8"
+    )
+    (job_dir / "structure.json").write_text(
+        json.dumps(structure, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    merged_md = build_merged_md(title, subtitle, cfg.author, man, structure)
+    merged_md_path = job_dir / "book_full.md"
+    merged_md_path.write_text(merged_md, encoding="utf-8")
+    docx_path = job_dir / "book_full.docx"
+    convert_to_docx(merged_md_path, docx_path)
+    return {
+        "title": title,
+        "subtitle": subtitle,
+        "md_path": str(merged_md_path),
+        "docx_path": str(docx_path),
+        "chapter_count": len(structure.get("chapters", [])),
+        "char_count": len(merged_md),
+        "adopted_index": adopted_index,
+    }
