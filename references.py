@@ -261,13 +261,16 @@ def _extract_docx(path: Path) -> str:
 # ---------------------------------------------------------------------------
 
 
-def analyze_image(path: Path, original_name: str, api_key: str, model: str = "gemini-2.0-flash") -> Reference:
+def analyze_image(path: Path, original_name: str, api_key: str, model: str = "") -> Reference:
     label = f"image: {original_name}"
     try:
         import google.generativeai as genai
+        # 画像読取は現行Stableのマルチモーダルモデルを使う（旧 gemini-2.0-flash は Shut down）。
+        # generator.resolve_model で停止モデルの自己修復＋env上書きを一元化。
+        from generator import resolve_model
 
         genai.configure(api_key=api_key)
-        m = genai.GenerativeModel(model)
+        m = genai.GenerativeModel(resolve_model(model))
         mime, _ = mimetypes.guess_type(original_name)
         if not mime:
             mime = "image/png"

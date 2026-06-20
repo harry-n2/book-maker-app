@@ -49,3 +49,10 @@ dist/
 *.spec.bak
 BookMaker_jobs/
 
+
+# ローカル検証用APIキー(コミット禁止)
+.localkey
+
+# 永続化DB(ローカル・コミット禁止)
+bookmaker_state.db
+bookmaker_state.db-*

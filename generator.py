@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import tempfile
@@ -22,6 +23,48 @@ BASE = _resource.resource_root()
 PROMPTS = _resource.resource("prompts")
 JOBS = _resource.jobs_dir()
 
+# ---------------------------------------------------------------------------
+# Model policy（Google AI 公式docで一次確認: 2026-06-20）
+#   ★ gemini-2.0-flash は "Shut down"（使用不可）。旧既定値のままだと生成不能。
+#   現行Stable: gemini-2.5-flash-lite / gemini-2.5-flash / gemini-3.5-flash / gemini-2.5-pro
+#   再現性のため `latest` エイリアスは使わず、固定 model_id を保存・使用する。
+#   各 model_id は環境変数で上書き可能（本番でのモデル更新を1か所で制御）。
+# ---------------------------------------------------------------------------
+MODEL_TIERS: dict[str, str] = {
+    "economy": os.environ.get("BOOKMAKER_MODEL_ECONOMY", "gemini-2.5-flash-lite"),
+    "standard": os.environ.get("BOOKMAKER_MODEL_STANDARD", "gemini-2.5-flash"),
+    "premium": os.environ.get("BOOKMAKER_MODEL_PREMIUM", "gemini-2.5-pro"),
+}
+DEFAULT_MODEL: str = MODEL_TIERS["standard"]
+
+# ---------------------------------------------------------------------------
+# 本文の文字数強制（オーナー指示: 各章 3500〜4500字）。
+#   無料枠を浪費しないため、初回プロンプトで範囲を狙わせ、外れた時のみ最小限の補正パス。
+#   閾値・最大補正回数は環境変数で調整可能。
+# ---------------------------------------------------------------------------
+CHAPTER_MIN_CHARS: int = int(os.environ.get("BOOKMAKER_CHAPTER_MIN_CHARS", "3500"))
+CHAPTER_MAX_CHARS: int = int(os.environ.get("BOOKMAKER_CHAPTER_MAX_CHARS", "4500"))
+CHAPTER_MAX_FIXUP_PASSES: int = int(os.environ.get("BOOKMAKER_CHAPTER_MAX_FIXUP_PASSES", "2"))
+
+
+def content_char_count(text: str) -> int:
+    """本文の実文字数（空白・改行を除いた可視文字数）。Markdown記号も実質本文として数える。"""
+    return len(re.sub(r"\s+", "", text or ""))
+
+
+def resolve_model(model: str | None) -> str:
+    """ティア名（economy/standard/premium）または model_id を受け取り、実 model_id を返す。
+
+    旧・停止済みの gemini-2.0-flash が渡された場合は現行 standard に置換する（後方互換・自己修復）。
+    """
+    if not model:
+        return DEFAULT_MODEL
+    if model in MODEL_TIERS:
+        return MODEL_TIERS[model]
+    if model.startswith("gemini-2.0-flash"):
+        return DEFAULT_MODEL
+    return model
+
 
 @dataclass
 class BookConfig:
@@ -29,7 +72,7 @@ class BookConfig:
     target_layer: str
     author: str
     api_key: str
-    model: str = "gemini-2.0-flash"
+    model: str = DEFAULT_MODEL
     references: list = field(default_factory=list)
     # v2.0: 著者プロファイル（フォームで都度入力・複数プロファイルを localStorage に保存）
     profile_name: str = ""
@@ -90,9 +133,40 @@ def _load_prompt(name: str, **kwargs) -> str:
     return text.format(**kwargs)
 
 
-def _call_gemini(api_key: str, model: str, prompt: str, max_retries: int = 3) -> str:
+_RETRY_DELAY_RE = re.compile(r"retry_delay\s*\{\s*seconds:\s*(\d+)", re.IGNORECASE)
+_RETRY_IN_RE = re.compile(r"retry in\s+([0-9.]+)\s*s", re.IGNORECASE)
+
+
+def _is_rate_limit(exc: Exception) -> bool:
+    s = str(exc).lower()
+    return "429" in s or "quota" in s or "resourceexhausted" in type(exc).__name__.lower()
+
+
+def _suggested_retry_seconds(exc: Exception) -> float | None:
+    """429 がサーバ指定する待機秒数を取り出す（属性 → メッセージ正規表現の順）。"""
+    rd = getattr(exc, "retry_delay", None)
+    secs = getattr(rd, "seconds", None)
+    if isinstance(secs, int) and secs > 0:
+        return float(secs)
+    msg = str(exc)
+    m = _RETRY_DELAY_RE.search(msg) or _RETRY_IN_RE.search(msg)
+    if m:
+        try:
+            return float(m.group(1))
+        except ValueError:
+            return None
+    return None
+
+
+def _call_gemini(
+    api_key: str,
+    model: str,
+    prompt: str,
+    max_retries: int = 5,
+    max_wait_seconds: float = 65.0,
+) -> str:
     genai.configure(api_key=api_key)
-    m = genai.GenerativeModel(model)
+    m = genai.GenerativeModel(resolve_model(model))
     last_err: Exception | None = None
     for attempt in range(max_retries):
         try:
@@ -102,7 +176,15 @@ def _call_gemini(api_key: str, model: str, prompt: str, max_retries: int = 3) ->
                 return text
         except Exception as exc:  # noqa: BLE001
             last_err = exc
-            time.sleep(2 ** attempt)
+            if attempt == max_retries - 1:
+                break
+            wait = float(2 ** attempt)
+            # レート制限はサーバ指定の retry_delay を尊重（無料枠 RPM 等）。上限でクランプ。
+            if _is_rate_limit(exc):
+                suggested = _suggested_retry_seconds(exc)
+                if suggested is not None:
+                    wait = min(suggested + 1.0, max_wait_seconds)
+            time.sleep(wait)
     raise RuntimeError(f"Gemini call failed after {max_retries} attempts: {last_err}")
 
 
@@ -301,7 +383,58 @@ def generate_chapter(
 
     full_prompt = system_prompt + "\n\n---\n\n" + user_prompt
     body = _strip_codefence(_call_gemini(cfg.api_key, cfg.model, full_prompt))
+
+    # 本文の文字数強制（実章のみ。はじめに=0 / おわりに=99 は対象外）。
+    if chapter_number not in (0, 99):
+        body = _enforce_chapter_length(cfg, full_prompt, body)
     return body
+
+
+def _enforce_chapter_length(cfg: BookConfig, base_prompt: str, body: str) -> str:
+    """章本文を CHAPTER_MIN_CHARS〜CHAPTER_MAX_CHARS に収める。
+
+    範囲内ならそのまま返す。不足/超過なら、前回本文を渡して増補/圧縮を依頼（最大 CHAPTER_MAX_FIXUP_PASSES 回）。
+    最終的に範囲外でも、最も範囲に近い候補を返す（無限ループ・無料枠浪費を防止）。
+    """
+    best = body
+    best_dist = _length_distance(content_char_count(body))
+    for _ in range(max(0, CHAPTER_MAX_FIXUP_PASSES)):
+        n = content_char_count(best)
+        if CHAPTER_MIN_CHARS <= n <= CHAPTER_MAX_CHARS:
+            return best
+        if n < CHAPTER_MIN_CHARS:
+            instruction = (
+                f"\n\n【字数調整】上の章本文は約{n}字で、規定の{CHAPTER_MIN_CHARS}〜{CHAPTER_MAX_CHARS}字に不足しています。"
+                f"\n同じ見出し構成・同じ主張・同じ事実のまま、具体例・手順・判断基準・チェック項目を増補して"
+                f"{CHAPTER_MIN_CHARS}〜{CHAPTER_MAX_CHARS}字に収めてください。"
+                "\n参考資料やプロフィールにない実績・数字・事例は新たに作らないこと。冗長な繰り返し・水増しは禁止。"
+                "\n本文(Markdown)のみを返してください。"
+            )
+        else:
+            instruction = (
+                f"\n\n【字数調整】上の章本文は約{n}字で、規定の{CHAPTER_MIN_CHARS}〜{CHAPTER_MAX_CHARS}字を超過しています。"
+                f"\n重複・冗長・装飾的な前置きを削り、要点と実用情報を保ったまま{CHAPTER_MIN_CHARS}〜{CHAPTER_MAX_CHARS}字に圧縮してください。"
+                "\n本文(Markdown)のみを返してください。"
+            )
+        fixup_prompt = base_prompt + "\n\n---\n【前回の章本文】\n" + best + instruction
+        try:
+            cand = _strip_codefence(_call_gemini(cfg.api_key, cfg.model, fixup_prompt))
+        except Exception:  # noqa: BLE001 無料枠枯渇等。直近最良を返す。
+            break
+        dist = _length_distance(content_char_count(cand))
+        if dist < best_dist:
+            best, best_dist = cand, dist
+        if best_dist == 0:
+            break
+    return best
+
+
+def _length_distance(n: int) -> int:
+    if n < CHAPTER_MIN_CHARS:
+        return CHAPTER_MIN_CHARS - n
+    if n > CHAPTER_MAX_CHARS:
+        return n - CHAPTER_MAX_CHARS
+    return 0
 
 
 def generate_reference(cfg: BookConfig, ch: dict, chapter_number: int, chapter_label: str | None = None) -> str:

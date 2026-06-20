@@ -33,6 +33,7 @@ from references import (
     fetch_url,
 )
 import _resource
+import store
 
 BASE = _resource.resource_root()
 JOBS = _resource.jobs_dir()
@@ -42,7 +43,9 @@ STATIC = _resource.resource("static")
 app = FastAPI(title="Book Maker", description="3段階UX 書籍生成アプリ")
 app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
 
-JOB_STATE: dict[str, dict] = {}
+# 永続化: ローカル=SQLite / 本番=DATABASE_URL があれば Postgres（$0・有料課金なし）。
+# プロセス再起動・サーバーレス再実行をまたいでジョブ状態が残る。APIキーはDBに保存しない（store.py）。
+JOB_STATE = store.PersistentJobState()
 
 ALLOWED_FILE_EXT = {".pdf", ".docx", ".md", ".markdown", ".txt", ".csv", ".json", ".yml", ".yaml"}
 ALLOWED_IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif"}

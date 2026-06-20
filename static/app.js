@@ -371,7 +371,7 @@
   function updateStructureRegenNote() {
     const regenRemain = Math.max(0, maxRegenPerStage - structureRegenCount);
     const modifyRemain = Math.max(0, maxRegenPerStage - structureModifyCount);
-    structureRegenNote.textContent = `???????? ${regenRemain} ? / ??????? ${modifyRemain} ??? ${maxRegenPerStage} ????`;
+    structureRegenNote.textContent = `\u69cb\u6210\u518d\u751f\u6210\u306f\u6b8b\u308a ${regenRemain} \u56de / \u90e8\u5206\u4fee\u6b63\u306f\u6b8b\u308a ${modifyRemain} \u56de\uff08\u5404 ${maxRegenPerStage} \u56de\u307e\u3067\uff09`;
     regenStructureBtn.disabled = regenRemain <= 0;
     openModifyBtn.disabled = modifyRemain <= 0;
   }
@@ -690,20 +690,20 @@
     if (!currentJobId) return;
     const instruction = modifyInstruction.value.trim();
     if (!instruction) {
-      alert("??????????????");
+      alert("\u4fee\u6b63\u6307\u793a\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002");
       return;
     }
     submitModifyBtn.disabled = true;
-    submitModifyBtn.textContent = "???...";
+    submitModifyBtn.textContent = "\u4fee\u6b63\u4e2d...";
     try {
       await modifyStructure(currentJobId, instruction);
       hide(modifyPanel);
       modifyInstruction.value = "";
       startPolling(currentJobId);
     } catch (err) {
-      alert(err.message || "????????????");
+      alert(err.message || "\u90e8\u5206\u4fee\u6b63\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002");
       submitModifyBtn.disabled = false;
-      submitModifyBtn.textContent = "???????";
+      submitModifyBtn.textContent = "\u3053\u306e\u6307\u793a\u3067\u4fee\u6b63";
     }
   });
 
