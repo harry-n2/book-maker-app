@@ -494,8 +494,26 @@
     hideAllSections();
     show(resultSection);
   }
+  // 技術的なエラー文を初心者向けの日本語に変換（サーバ側でも変換するが、クライアント側でも保険的に変換）
+  function friendlyError(message) {
+    const s = String(message || "").toLowerCase();
+    if (s.indexOf("429") >= 0 || s.indexOf("quota") >= 0 || s.indexOf("rate") >= 0) {
+      return "Geminiの無料枠が一時的に上限に達しました。ここまで作成した内容は保存されています。少し時間を置いて、同じ本を開くと続きから再開できます。";
+    }
+    if (s.indexOf("api key") >= 0 || s.indexOf("api_key") >= 0 || s.indexOf("401") >= 0 || s.indexOf("403") >= 0 || s.indexOf("unauthorized") >= 0 || s.indexOf("invalid") >= 0) {
+      return "Gemini APIキーに問題があるようです。Google AI Studioで取得した正しいキーを貼り直してください（キーは保存されません）。";
+    }
+    if (s.indexOf("timeout") >= 0 || s.indexOf("deadline") >= 0) {
+      return "通信がタイムアウトしました。途中まで作成した内容は保存されています。もう一度お試しください。";
+    }
+    // すでに日本語の分かりやすい文ならそのまま、英語技術文なら一般文に
+    if (/^[\x00-\x7f\s]+$/.test(String(message || "")) || s.indexOf("error") >= 0 || s.indexOf("traceback") >= 0) {
+      return "エラーが発生しました。少し時間を置いてもう一度お試しください。（途中の内容は保存されています）";
+    }
+    return message;
+  }
   function showError(message) {
-    errorMessage.textContent = message;
+    errorMessage.textContent = friendlyError(message);
     hideAllSections();
     show(errorSection);
   }
