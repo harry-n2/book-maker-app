@@ -56,3 +56,5 @@ BookMaker_jobs/
 # 永続化DB(ローカル・コミット禁止)
 bookmaker_state.db
 bookmaker_state.db-*
+*.sqlite
+*.sqlite3

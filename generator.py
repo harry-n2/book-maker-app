@@ -30,10 +30,13 @@ JOBS = _resource.jobs_dir()
 #   再現性のため `latest` エイリアスは使わず、固定 model_id を保存・使用する。
 #   各 model_id は環境変数で上書き可能（本番でのモデル更新を1か所で制御）。
 # ---------------------------------------------------------------------------
+# ★ 無料枠制約: gemini-2.5-pro は無料枠 limit=0（無料では使用不可・実質有料専用）。
+#   「有料課金しない」方針のため、既定ティアは全て無料枠で使えるflash系にする。
+#   2.5-pro等を使いたい場合のみ env で明示上書き（有料前提・既定にはしない）。
 MODEL_TIERS: dict[str, str] = {
     "economy": os.environ.get("BOOKMAKER_MODEL_ECONOMY", "gemini-2.5-flash-lite"),
     "standard": os.environ.get("BOOKMAKER_MODEL_STANDARD", "gemini-2.5-flash"),
-    "premium": os.environ.get("BOOKMAKER_MODEL_PREMIUM", "gemini-2.5-pro"),
+    "premium": os.environ.get("BOOKMAKER_MODEL_PREMIUM", "gemini-3.5-flash"),
 }
 DEFAULT_MODEL: str = MODEL_TIERS["standard"]
 
@@ -44,7 +47,7 @@ DEFAULT_MODEL: str = MODEL_TIERS["standard"]
 # ---------------------------------------------------------------------------
 CHAPTER_MIN_CHARS: int = int(os.environ.get("BOOKMAKER_CHAPTER_MIN_CHARS", "3500"))
 CHAPTER_MAX_CHARS: int = int(os.environ.get("BOOKMAKER_CHAPTER_MAX_CHARS", "4500"))
-CHAPTER_MAX_FIXUP_PASSES: int = int(os.environ.get("BOOKMAKER_CHAPTER_MAX_FIXUP_PASSES", "2"))
+CHAPTER_MAX_FIXUP_PASSES: int = int(os.environ.get("BOOKMAKER_CHAPTER_MAX_FIXUP_PASSES", "3"))
 
 
 def content_char_count(text: str) -> int:
@@ -64,6 +67,17 @@ def resolve_model(model: str | None) -> str:
     if model.startswith("gemini-2.0-flash"):
         return DEFAULT_MODEL
     return model
+
+
+def _step_model(key: str, cfg: "BookConfig") -> str:
+    """工程別モデルの解決（§5.2）。
+
+    環境変数 GEMINI_MODEL_<KEY> または BOOKMAKER_MODEL_<KEY>（例 GEMINI_MODEL_CHAPTER）があればそれを使う。
+    無ければ cfg.model（=既定 standard）。無料枠の日次上限はモデル別なので、工程ごとに別モデルを割り当てると
+    無料のまま1冊を完走しやすくなる。値はティア名/モデルIDどちらも可（resolve_modelが正規化）。
+    """
+    env = os.environ.get(f"GEMINI_MODEL_{key}") or os.environ.get(f"BOOKMAKER_MODEL_{key}")
+    return resolve_model(env) if env else cfg.model
 
 
 @dataclass
@@ -220,7 +234,7 @@ def generate_titles(cfg: BookConfig) -> list[dict]:
     refs = _references_block(cfg)
     if refs:
         prompt = refs + "\n\n" + prompt
-    raw = _strip_codefence(_call_gemini(cfg.api_key, cfg.model, prompt))
+    raw = _strip_codefence(_call_gemini(cfg.api_key, _step_model("TITLES", cfg), prompt))
     data = json.loads(raw)
     cands = data.get("candidates", [])
     if not isinstance(cands, list) or len(cands) == 0:
@@ -306,7 +320,7 @@ def generate_structure(cfg: BookConfig, adopted_title: str, adopted_subtitle: st
         prompt = refs + "\n\n" + prompt
     last_err = ""
     for attempt in range(3):
-        raw = _strip_codefence(_call_gemini(cfg.api_key, cfg.model, prompt))
+        raw = _strip_codefence(_call_gemini(cfg.api_key, _step_model("STRUCTURE", cfg), prompt))
         try:
             structure = json.loads(raw)
         except Exception as exc:  # noqa: BLE001
@@ -382,7 +396,8 @@ def generate_chapter(
         user_prompt = refs + "\n\n" + user_prompt
 
     full_prompt = system_prompt + "\n\n---\n\n" + user_prompt
-    body = _strip_codefence(_call_gemini(cfg.api_key, cfg.model, full_prompt))
+    chapter_model = _step_model("OUTRO" if chapter_number in (0, 99) else "CHAPTER", cfg)
+    body = _strip_codefence(_call_gemini(cfg.api_key, chapter_model, full_prompt))
 
     # 本文の文字数強制（実章のみ。はじめに=0 / おわりに=99 は対象外）。
     if chapter_number not in (0, 99):
@@ -390,51 +405,105 @@ def generate_chapter(
     return body
 
 
-def _enforce_chapter_length(cfg: BookConfig, base_prompt: str, body: str) -> str:
-    """章本文を CHAPTER_MIN_CHARS〜CHAPTER_MAX_CHARS に収める。
+# 章末メモ(コピペブロック)が後段で追記されるぶんの余白。本文+メモ合計を上限内に収めるため
+# 本文側の実効上限を「CHAPTER_MAX_CHARS - この余白」にする。
+CHAPTER_REF_HEADROOM: int = int(os.environ.get("BOOKMAKER_CHAPTER_REF_HEADROOM", "250"))
 
-    範囲内ならそのまま返す。不足/超過なら、前回本文を渡して増補/圧縮を依頼（最大 CHAPTER_MAX_FIXUP_PASSES 回）。
-    最終的に範囲外でも、最も範囲に近い候補を返す（無限ループ・無料枠浪費を防止）。
+
+def _effective_max() -> int:
+    return max(CHAPTER_MIN_CHARS + 300, CHAPTER_MAX_CHARS - CHAPTER_REF_HEADROOM)
+
+
+def _length_distance(n: int, hi: int) -> int:
+    if n < CHAPTER_MIN_CHARS:
+        return CHAPTER_MIN_CHARS - n
+    if n > hi:
+        return n - hi
+    return 0
+
+
+def _hard_trim_to_max(text: str, hi: int) -> str:
+    """決定的トリム（最終保証）: 本文を実文字数 hi 以下にする。
+
+    段落（空行区切り）単位で、先頭の段落群＋最後の段落（章末の行動/チェックリスト）を残し、
+    入りきらない中間段落を末尾側から落とす。最後に句点単位で微調整。読みやすさを保ちつつ上限を必ず満たす。
     """
+    if content_char_count(text) <= hi:
+        return text
+    paras = [p for p in re.split(r"\n\s*\n", text.strip()) if p.strip()]
+    if len(paras) >= 3:
+        head, last = paras[:-1], paras[-1]
+        budget = hi - content_char_count(last)
+        kept: list[str] = []
+        cum = 0
+        for p in head:
+            c = content_char_count(p)
+            if cum + c <= budget:
+                kept.append(p)
+                cum += c
+            else:
+                break
+        candidate = "\n\n".join(kept + [last]) if kept else last
+        # 段落トリムは [min, hi] に収まる場合のみ採用（粗い段落で下限割れするのを防ぐ）
+        if CHAPTER_MIN_CHARS <= content_char_count(candidate) <= hi:
+            return candidate
+    # フォールバック: 句点・改行境界で hi 直下まで詰める（hi>minなので下限割れしない）
+    out = []
+    cum = 0
+    for tok in re.split(r"(?<=[。！？\n])", text):
+        c = content_char_count(tok)
+        if cum + c > hi:
+            break
+        out.append(tok)
+        cum += c
+    trimmed = "".join(out).rstrip()
+    return trimmed if content_char_count(trimmed) >= CHAPTER_MIN_CHARS else text
+
+
+def _enforce_chapter_length(cfg: BookConfig, base_prompt: str, body: str) -> str:
+    """章本文を CHAPTER_MIN_CHARS〜実効上限 に収める。
+
+    実効上限 = CHAPTER_MAX_CHARS - メモ余白（本文+章末メモ合計を CHAPTER_MAX_CHARS 以下に保つため）。
+    増補/圧縮を最大 CHAPTER_MAX_FIXUP_PASSES 回。なお収まらなければ最後に決定的トリムで上限を必ず満たす。
+    """
+    hi = _effective_max()
     best = body
-    best_dist = _length_distance(content_char_count(body))
+    best_dist = _length_distance(content_char_count(body), hi)
     for _ in range(max(0, CHAPTER_MAX_FIXUP_PASSES)):
         n = content_char_count(best)
-        if CHAPTER_MIN_CHARS <= n <= CHAPTER_MAX_CHARS:
+        if CHAPTER_MIN_CHARS <= n <= hi:
             return best
         if n < CHAPTER_MIN_CHARS:
             instruction = (
-                f"\n\n【字数調整】上の章本文は約{n}字で、規定の{CHAPTER_MIN_CHARS}〜{CHAPTER_MAX_CHARS}字に不足しています。"
+                f"\n\n【字数調整】上の章本文は約{n}字で、規定の{CHAPTER_MIN_CHARS}〜{hi}字に不足しています。"
                 f"\n同じ見出し構成・同じ主張・同じ事実のまま、具体例・手順・判断基準・チェック項目を増補して"
-                f"{CHAPTER_MIN_CHARS}〜{CHAPTER_MAX_CHARS}字に収めてください。"
+                f"{CHAPTER_MIN_CHARS}〜{hi}字に収めてください。"
                 "\n参考資料やプロフィールにない実績・数字・事例は新たに作らないこと。冗長な繰り返し・水増しは禁止。"
                 "\n本文(Markdown)のみを返してください。"
             )
         else:
+            over = n - hi
             instruction = (
-                f"\n\n【字数調整】上の章本文は約{n}字で、規定の{CHAPTER_MIN_CHARS}〜{CHAPTER_MAX_CHARS}字を超過しています。"
-                f"\n重複・冗長・装飾的な前置きを削り、要点と実用情報を保ったまま{CHAPTER_MIN_CHARS}〜{CHAPTER_MAX_CHARS}字に圧縮してください。"
+                f"\n\n【字数調整・必須】上の章本文は約{n}字で、上限{hi}字を{over}字超過しています。"
+                f"\n**{hi}字を絶対に超えないこと**。目標は約{hi-200}字。"
+                "\n削減方法: 重複説明・冗長な前置き・同義の言い換え・過剰な比喩を削る。具体例が複数あるなら最も弱い1つを丸ごと削除する。"
+                "\n保持: 章の主張・手順・判断基準・章末の行動。"
                 "\n本文(Markdown)のみを返してください。"
             )
         fixup_prompt = base_prompt + "\n\n---\n【前回の章本文】\n" + best + instruction
         try:
-            cand = _strip_codefence(_call_gemini(cfg.api_key, cfg.model, fixup_prompt))
+            cand = _strip_codefence(_call_gemini(cfg.api_key, _step_model("CHAPTER", cfg), fixup_prompt))
         except Exception:  # noqa: BLE001 無料枠枯渇等。直近最良を返す。
             break
-        dist = _length_distance(content_char_count(cand))
+        dist = _length_distance(content_char_count(cand), hi)
         if dist < best_dist:
             best, best_dist = cand, dist
         if best_dist == 0:
             break
+    # 最終保証: それでも上限超過なら決定的にトリム（API消費なし）
+    if content_char_count(best) > hi:
+        best = _hard_trim_to_max(best, hi)
     return best
-
-
-def _length_distance(n: int) -> int:
-    if n < CHAPTER_MIN_CHARS:
-        return CHAPTER_MIN_CHARS - n
-    if n > CHAPTER_MAX_CHARS:
-        return n - CHAPTER_MAX_CHARS
-    return 0
 
 
 def generate_reference(cfg: BookConfig, ch: dict, chapter_number: int, chapter_label: str | None = None) -> str:
@@ -446,7 +515,7 @@ def generate_reference(cfg: BookConfig, ch: dict, chapter_number: int, chapter_l
         chapter_title=ch.get("title", ""),
         key_message=ch.get("key_message", ""),
     )
-    return _strip_codefence(_call_gemini(cfg.api_key, cfg.model, prompt))
+    return _strip_codefence(_call_gemini(cfg.api_key, _step_model("CHAPTER", cfg), prompt))
 
 
 def generate_promotion(cfg: BookConfig, structure: dict) -> str:
@@ -461,7 +530,7 @@ def generate_promotion(cfg: BookConfig, structure: dict) -> str:
     refs = _references_block(cfg)
     if refs:
         prompt = refs + "\n\n" + prompt
-    return _strip_codefence(_call_gemini(cfg.api_key, cfg.model, prompt))
+    return _strip_codefence(_call_gemini(cfg.api_key, _step_model("PROMOTION", cfg), prompt))
 
 
 def _structure_summary(structure: dict) -> str:
@@ -483,7 +552,7 @@ def generate_description(cfg: BookConfig, structure: dict) -> str:
         author=cfg.author,
         structure_summary=_structure_summary(structure),
     )
-    return _strip_codefence(_call_gemini(cfg.api_key, cfg.model, prompt))
+    return _strip_codefence(_call_gemini(cfg.api_key, _step_model("DESCRIPTION", cfg), prompt))
 
 
 # ---------------------------------------------------------------------------
@@ -513,7 +582,7 @@ def regenerate_titles_bestseller(cfg: BookConfig, prev_candidates: list[dict]) -
     refs = _references_block(cfg)
     if refs:
         prompt = refs + "\n\n" + prompt
-    raw = _strip_codefence(_call_gemini(cfg.api_key, cfg.model, prompt))
+    raw = _strip_codefence(_call_gemini(cfg.api_key, _step_model("TITLES", cfg), prompt))
     data = json.loads(raw)
     cands = data.get("candidates", [])
     if not isinstance(cands, list) or len(cands) == 0:
@@ -546,7 +615,7 @@ def generate_structure_bestseller(
     last_err = ""
     prompt = base_prompt
     for _ in range(3):
-        raw = _strip_codefence(_call_gemini(cfg.api_key, cfg.model, prompt))
+        raw = _strip_codefence(_call_gemini(cfg.api_key, _step_model("STRUCTURE", cfg), prompt))
         try:
             structure = json.loads(raw)
         except Exception as exc:  # noqa: BLE001
@@ -1292,6 +1361,9 @@ def write_one_section(cfg: BookConfig, job_dir: Path, structure: dict, title: st
     if step.get("ref"):
         ref_block = generate_reference(cfg, ch, num, label)
         full = clean_public_manuscript(full + "\n\n" + ref_block + "\n")
+    # 実章のみ: 本文+章末メモ合計（=保存ファイル）が上限を超えないことを最終保証（API消費なし）。
+    if num not in (0, 99) and content_char_count(full) > CHAPTER_MAX_CHARS:
+        full = _hard_trim_to_max(full, CHAPTER_MAX_CHARS)
     out_path.write_text(clean_public_manuscript(full), encoding="utf-8")
 
 

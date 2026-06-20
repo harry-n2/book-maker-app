@@ -62,7 +62,19 @@ MAX_REGEN_PER_STAGE = 3
 
 @app.get("/", response_class=HTMLResponse)
 async def index() -> str:
-    return (TEMPLATES / "index.html").read_text(encoding="utf-8")
+    html = (TEMPLATES / "index.html").read_text(encoding="utf-8")
+    # 本番永続化(無料Postgres/DATABASE_URL)が未設定なら警告を表示（A案）。未設定でもアプリは動作する。
+    if not os.environ.get("DATABASE_URL"):
+        notice = (
+            '<div class="persistence-warning" role="status">'
+            "⚠ 本番の永続化は未設定です。ブラウザを閉じたり時間が経つと、進行中ジョブが消える場合があります。"
+            "無料の Neon などの DATABASE_URL を設定すると永続化できます（有料契約は不要）。"
+            "</div>"
+        )
+        html = html.replace("<!--PERSISTENCE_NOTICE-->", notice)
+    else:
+        html = html.replace("<!--PERSISTENCE_NOTICE-->", "")
+    return html
 
 
 def _save_upload(upload: UploadFile, dest_dir: Path) -> Path:
