@@ -9,7 +9,8 @@
 <body>
 <header>
   <h1>Book Maker</h1>
-  <p class="lead">AIでKindle電子書籍を作るアプリ ── 3ステップで完成</p>
+  <p class="lead">初心者でも3ステップで、KDP入稿用Wordファイルまで作れます</p>
+  <p class="lead2">テーマを入れるだけで、タイトル案・章立て・本文・Kindle紹介文・Wordを自動作成</p>
 </header>
 <!--PERSISTENCE_NOTICE-->
 
@@ -20,85 +21,86 @@
   <div class="step" id="step-3"><span class="step-num">3</span><span class="step-label">STEP 3　本文とWordファイルを生成</span></div>
 </div>
 
-<aside id="project-sidebar">
-  <h3>これまでの本</h3>
-  <button id="new-project-btn" type="button" class="side-btn">＋ 新しい本を作る</button>
-  <ul id="project-list"></ul>
-  <p class="side-note">作成した本はこのブラウザに記録されます</p>
-</aside>
+<!-- 過去プロジェクト（初期は閉じる） -->
+<details class="project-history">
+  <summary>過去に作った本を見る</summary>
+  <div id="project-list-wrap">
+    <button id="new-project-btn" type="button" class="side-btn">＋ 新しい本を作る</button>
+    <ul id="project-list"></ul>
+    <p class="side-note">作成した本はこのブラウザに記録されます</p>
+  </div>
+</details>
 
 <main>
   <!-- ============ STEP 1: 入力 ============ -->
   <section id="form-section">
     <h2>STEP 1　本の情報を入力</h2>
-    <p class="note">下の項目を入力して、いちばん下の青いボタンを押してください。例文を参考に書くと良い本になります。</p>
     <div class="layout">
       <form id="book-form">
-        <!-- Gemini APIキー -->
-        <label class="field" for="api_key">
-          <span class="label-title"><span class="num">1</span>Gemini APIキー</span>
-          <span class="badge badge-req">必須</span>
-          <span class="hint">本文を作るためのカギです。下の説明のとおり無料で取得できます。</span>
-        </label>
-        <div class="apikey-help">
-          Google AI Studio（<a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">aistudio.google.com/app/apikey</a>）で無料取得したGemini APIキーを貼り付けてください。<br>
-          <strong>このアプリはAPIキーを保存しません。本を作る間だけ使います。</strong>
+        <div class="card required-card">
+          <p class="note" style="margin-top:0;">まずは必須6項目だけでOK。迷ったら例文を少し変えるだけで大丈夫です。</p>
+
+          <label class="field" for="api_key">
+            <span class="label-title"><span class="num">1</span>Gemini APIキー</span>
+            <span class="badge badge-req">必須</span>
+            <span class="hint">本文を作るためのカギ。無料で取得できます。</span>
+          </label>
+          <div class="apikey-help">
+            Google AI Studio（<a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">aistudio.google.com/app/apikey</a>）で無料取得したキーを貼り付け。<br>
+            <strong>このアプリはAPIキーを保存しません。本を作る間だけ使います。</strong>
+          </div>
+          <div class="apikey-row">
+            <input type="password" id="api_key" name="api_key" required placeholder="AIzaSy... を貼り付け" autocomplete="off">
+            <button type="button" id="api-key-toggle" class="toggle-btn" aria-label="APIキーの表示と非表示を切り替える">表示</button>
+          </div>
+
+          <label class="field" for="theme">
+            <span class="label-title"><span class="num">2</span>書籍テーマ</span>
+            <span class="badge badge-req">必須</span>
+            <span class="hint">どんな本を作りますか？1〜2行で具体的に。</span>
+            <textarea id="theme" name="theme" rows="2" required placeholder="例：AIを使って副業を仕組み化する方法"></textarea>
+          </label>
+
+          <label class="field" for="target_layer">
+            <span class="label-title"><span class="num">3</span>想定読者</span>
+            <span class="badge badge-req">必須</span>
+            <span class="hint">読んでほしい人を選んでください。</span>
+            <select id="target_layer" name="target_layer" required>
+              <option value="副業を始めたが売上が伸びない30代会社員">副業を始めたが売上が伸びない30代会社員</option>
+              <option value="これから副業・個人ビジネスを始めたい会社員">これから副業を始めたい会社員</option>
+              <option value="専門職・士業で時間単価の天井に悩む方">専門職・士業の方</option>
+              <option value="経営者・個人事業主で仕組み化したい方">経営者・個人事業主の方</option>
+              <option value="フリーランス・受託で次のステージを探す方">フリーランス・受託の方</option>
+            </select>
+          </label>
+
+          <label class="field" for="reader_pain">
+            <span class="label-title"><span class="num">4</span>読者の悩み</span>
+            <span class="badge badge-opt">任意</span>
+            <span class="hint">読者が今いちばん困っていること。書くと刺さる本になります。</span>
+            <textarea id="reader_pain" name="reader_pain" rows="2" placeholder="例：毎日作業しているのに、月5万円以上に伸びない"></textarea>
+          </label>
+
+          <label class="field" for="reader_change">
+            <span class="label-title"><span class="num">5</span>読後に得られる変化</span>
+            <span class="badge badge-opt">任意</span>
+            <span class="hint">読み終えた人がどうなれるか。</span>
+            <textarea id="reader_change" name="reader_change" rows="2" placeholder="例：AIで作業を減らし、安定して収益化する手順が分かる"></textarea>
+          </label>
+
+          <label class="field" for="author">
+            <span class="label-title"><span class="num">6</span>著者名（ペンネーム可）</span>
+            <span class="badge badge-req">必須</span>
+            <span class="hint">本の著者として表示される名前。</span>
+            <input type="text" id="author" name="author" required placeholder="例：ハリー">
+          </label>
+
+          <button type="submit" id="submit-btn" class="primary-button">タイトル案を作る →</button>
         </div>
-        <div class="apikey-row">
-          <input type="password" id="api_key" name="api_key" required placeholder="AIzaSy... を貼り付け" autocomplete="off">
-          <button type="button" id="api-key-toggle" class="toggle-btn" aria-label="APIキーの表示と非表示を切り替える">表示</button>
-        </div>
 
-        <!-- テーマ -->
-        <label class="field" for="theme">
-          <span class="label-title"><span class="num">2</span>書籍テーマ</span>
-          <span class="badge badge-req">必須</span>
-          <span class="hint">どんな本を作りますか？1〜2行で具体的に。</span>
-          <textarea id="theme" name="theme" rows="2" required placeholder="例：AIを使って副業を仕組み化する方法"></textarea>
-        </label>
-
-        <!-- 想定読者 -->
-        <label class="field" for="target_layer">
-          <span class="label-title"><span class="num">3</span>想定読者</span>
-          <span class="badge badge-req">必須</span>
-          <span class="hint">この本を読んでほしい人を選んでください。</span>
-          <select id="target_layer" name="target_layer" required>
-            <option value="副業を始めたが売上が伸びない30代会社員">副業を始めたが売上が伸びない30代会社員</option>
-            <option value="これから副業・個人ビジネスを始めたい会社員">これから副業を始めたい会社員</option>
-            <option value="専門職・士業で時間単価の天井に悩む方">専門職・士業の方</option>
-            <option value="経営者・個人事業主で仕組み化したい方">経営者・個人事業主の方</option>
-            <option value="フリーランス・受託で次のステージを探す方">フリーランス・受託の方</option>
-          </select>
-        </label>
-
-        <!-- 読者の悩み -->
-        <label class="field" for="reader_pain">
-          <span class="label-title"><span class="num">4</span>読者の悩み</span>
-          <span class="badge badge-opt">任意</span>
-          <span class="hint">読者が今いちばん困っていることを書くと、刺さる本になります。</span>
-          <textarea id="reader_pain" name="reader_pain" rows="2" placeholder="例：毎日作業しているのに、月5万円以上に伸びない"></textarea>
-        </label>
-
-        <!-- 読後に得られる変化 -->
-        <label class="field" for="reader_change">
-          <span class="label-title"><span class="num">5</span>読後に得られる変化</span>
-          <span class="badge badge-opt">任意</span>
-          <span class="hint">読み終えた人がどうなれるかを書いてください。</span>
-          <textarea id="reader_change" name="reader_change" rows="2" placeholder="例：AIで作業を減らし、安定して収益化する手順が分かる"></textarea>
-        </label>
-
-        <!-- 著者名 -->
-        <label class="field" for="author">
-          <span class="label-title"><span class="num">6</span>著者名（ペンネーム可）</span>
-          <span class="badge badge-req">必須</span>
-          <span class="hint">本の著者として表示される名前です。</span>
-          <input type="text" id="author" name="author" required placeholder="例：ハリー">
-        </label>
-
-        <!-- 著者プロフィール -->
-        <fieldset class="field reference-block">
-          <legend>著者プロフィール（任意）</legend>
-          <span class="hint">分かる範囲でOK。書いた内容だけが本に反映されます（無い実績は作りません）。</span>
+        <!-- 任意の詳細設定（折りたたみ） -->
+        <details class="optional-block">
+          <summary>任意の詳細設定を開く（著者プロフィール・巻末宣伝など）</summary>
           <div class="ref-row">
             <span class="ref-label">表示する著者名</span>
             <input type="text" id="profile_name" name="profile_name" placeholder="例：山田太郎">
@@ -116,27 +118,22 @@
             <textarea id="profile_target_keywords" name="profile_target_keywords" rows="2" placeholder="AI活用&#10;仕組み化&#10;副業"></textarea>
           </div>
           <div class="ref-row">
-            <span class="ref-label">使ってよい失敗例・実体験（1行1項目・任意）</span>
+            <span class="ref-label">使ってよい失敗例・実体験（1行1項目）</span>
             <textarea id="profile_failure_bank" name="profile_failure_bank" rows="2" placeholder="例：広告だけに頼って利益が残らなかった経験"></textarea>
           </div>
           <div class="ref-row">
-            <span class="ref-label">使ってよい語り口の型（1行1項目・任意）</span>
+            <span class="ref-label">使ってよい語り口の型（1行1項目）</span>
             <textarea id="profile_voice_types" name="profile_voice_types" rows="2" placeholder="例：実務経験からの助言&#10;チェックリスト型の整理"></textarea>
           </div>
-        </fieldset>
+          <div class="ref-row">
+            <span class="ref-label">巻末宣伝の内容（LINE・講座・特典など）</span>
+            <textarea id="promo_material" name="promo_material" rows="2" placeholder="例：無料のAI副業テンプレートをLINEで配布中。登録特典あり。"></textarea>
+          </div>
+        </details>
 
-        <!-- 巻末宣伝内容 -->
-        <label class="field" for="promo_material">
-          <span class="label-title"><span class="num">7</span>巻末宣伝の内容</span>
-          <span class="badge badge-opt">任意</span>
-          <span class="hint">本の最後で案内したいもの（LINE・講座・特典など）。押し売りにならない自然な誘導にします。</span>
-          <textarea id="promo_material" name="promo_material" rows="2" placeholder="例：無料のAI副業テンプレートをLINEで配布中。登録特典あり。"></textarea>
-        </label>
-
-        <!-- 参考資料 -->
-        <fieldset class="field reference-block">
-          <legend>参考資料（任意・複数可）</legend>
-          <span class="hint">添付した素材は本の事実・事例として使われます。無くてもOKです。</span>
+        <!-- 参考資料（折りたたみ） -->
+        <details class="optional-block">
+          <summary>参考資料を追加する（任意・URL/ファイル/画像/直貼り）</summary>
           <div class="ref-row">
             <span class="ref-label">URL（1行に1つ）</span>
             <textarea id="ref_urls" name="ref_urls" rows="2" placeholder="https://example.com/article"></textarea>
@@ -144,7 +141,6 @@
           <div class="ref-row">
             <span class="ref-label">NotebookLM の共有 URL</span>
             <textarea id="notebooklm_urls" name="notebooklm_urls" rows="1" placeholder="https://notebooklm.google.com/notebook/xxxxx （任意）"></textarea>
-            <span class="ref-hint-small">※ 取得が難しい場合は、下の「テキスト直貼り」が確実です。</span>
           </div>
           <div class="ref-row">
             <span class="ref-label">ファイル（PDF / Word / Markdown / Text / CSV）── 最大10個</span>
@@ -159,24 +155,25 @@
             <ul id="image-list" class="upload-list"></ul>
           </div>
           <div class="ref-row">
-            <span class="ref-label">★ テキスト直貼り（任意・最も確実）</span>
+            <span class="ref-label">★ テキスト直貼り（最も確実）</span>
             <textarea id="pasted_text" name="pasted_text" rows="4" placeholder="参考にしたい本文をそのまま貼り付け。複数は --- 行で区切ります。"></textarea>
           </div>
-        </fieldset>
-
-        <button type="submit" id="submit-btn" class="primary-button">タイトル案を作る →</button>
+        </details>
       </form>
 
-      <aside class="reference-block" aria-label="作成の流れ">
-        <h3 style="margin-top:0;">作成の流れ</h3>
-        <ol style="padding-left:20px; margin:0;">
-          <li>本の情報を入力する（この画面）</li>
-          <li>AIが作る<strong>タイトル案</strong>から1つ選ぶ</li>
-          <li><strong>章立て</strong>を確認する</li>
-          <li>本文・おわりに・巻末・紹介文を自動生成</li>
-          <li><strong>Wordファイル</strong>をダウンロードしてKDPへ</li>
+      <aside class="card guide-card" aria-label="次にやること">
+        <h3 style="margin-top:0;">次にやること</h3>
+        <p><strong>まずは必須6項目だけ</strong>入力してください。3分で入力できます。迷ったら例文を少し変えるだけでOKです。</p>
+        <ol style="padding-left:20px; margin:8px 0;">
+          <li>APIキーを貼る</li>
+          <li>本のテーマを書く</li>
+          <li>読者を選ぶ</li>
+          <li>悩みを書く</li>
+          <li>読後の変化を書く</li>
+          <li>著者名を書く</li>
         </ol>
-        <p class="note" style="margin-top:12px;">所要：数分。途中で画面を閉じないでください。</p>
+        <p>入力が終わったら、青い<strong>「タイトル案を作る」</strong>を押してください。</p>
+        <p class="note">著者プロフィールや参考資料は<strong>任意</strong>。無くても作れます。</p>
       </aside>
     </div>
   </section>

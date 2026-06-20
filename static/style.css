@@ -31,7 +31,8 @@ header {
   text-align: center;
 }
 header h1 { margin: 0 0 4px; font-size: 30px; letter-spacing: .02em; }
-header .lead { margin: 0; font-size: 15px; opacity: .95; }
+header .lead { margin: 0; font-size: 16px; font-weight: 700; opacity: .98; }
+header .lead2 { margin: 4px 0 0; font-size: 13px; opacity: .9; }
 
 /* ---------- STEP インジケーター ---------- */
 .steps {
@@ -68,8 +69,26 @@ header .lead { margin: 0; font-size: 15px; opacity: .95; }
 .step.done .step-num { background: var(--success); color: #fff; }
 
 /* ---------- レイアウト ---------- */
-main { max-width: 1080px; margin: 0 auto; padding: 8px 16px 40px; }
-.layout { display: grid; grid-template-columns: 1fr; gap: 18px; }
+main { max-width: 1180px; margin: 0 auto; padding: 8px 16px 40px; }
+.layout { display: grid; grid-template-columns: 1fr; gap: 24px; align-items: start; }
+
+/* form-section自体はカード装飾を外し、中の必須カード/ガイドを主役にする */
+#form-section { background: transparent; border: none; box-shadow: none; padding: 8px 0; }
+#form-section > h2 { margin-left: 4px; }
+
+/* 必須入力カード / 任意ブロック / 次にやること */
+.required-card { padding: 28px; }
+.optional-block { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 6px 16px; margin-top: 16px; }
+.optional-block summary { cursor: pointer; font-weight: 700; color: var(--primary-dark); padding: 10px 0; }
+.optional-block[open] { padding-bottom: 16px; }
+.guide-card { background: #eff6ff; border: 1px solid #bfdbfe; }
+.guide-card h3 { color: var(--primary-dark); }
+
+/* 過去プロジェクト（控えめ・折りたたみ） */
+.project-history { max-width: 1180px; margin: 12px auto; background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 10px 16px; }
+.project-history summary { cursor: pointer; font-weight: 700; color: var(--primary-dark); }
+#project-list-wrap { max-height: 180px; overflow-y: auto; margin-top: 10px; }
+#project-list li { font-size: 12px; max-width: 240px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---------- カード ---------- */
 .card, section {
@@ -248,13 +267,15 @@ footer { text-align: center; color: var(--muted); font-size: 12px; padding: 20px
 
 /* ---------- レスポンシブ（スマホ） ---------- */
 @media (min-width: 900px) {
-  .layout { grid-template-columns: 1.4fr 1fr; align-items: start; }
+  .layout { grid-template-columns: minmax(0, 1.2fr) 360px; align-items: start; }
+  .guide-card { position: sticky; top: 16px; }
 }
 @media (max-width: 768px) {
   header h1 { font-size: 24px; }
   .layout { grid-template-columns: 1fr; }
+  .guide-card { position: static; }
   .step { min-width: 100%; }
   button, .primary-button, .secondary-btn { width: 100%; }
   .title-pick-actions, .structure-actions, .references-actions { flex-direction: column; }
-  section, .card { padding: 18px; }
+  section, .card, .required-card { padding: 18px; }
 }
